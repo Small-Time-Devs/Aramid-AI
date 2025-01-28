@@ -31,7 +31,14 @@ function autoPostToTwitter() {
 
         // step 1 call the generateAutoPostTweet function from the twitterProfessional module
         const tweet = await twitterProfessional.generateAutoPostTweet();
-        console.log(tweet);
+        if (config.twitter.settings.devMode) {
+          console.log(`Dev mode enabled, 
+            Tweet to be sent!. ${tweet.tweet}
+            Comment: ${tweet.comment}
+            Hashtags: ${tweet.hashtagsComment}`);
+          return;
+        }
+
         if (tweet === undefined) {
             console.log("Tweet is undefined, generating a new one!");
             const tweet = await twitterProfessional.generateAutoPostTweet();

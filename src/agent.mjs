@@ -48,7 +48,9 @@ export async function generateAutoPostTweet() {
     try {
       // Step 2 call the handleQuestion function
       tweetData = await handleQuestion();
-      //console.log("Generated Tweet:", tweetData);
+      if (config.twitter.settings.devMode) {
+        console.log('Development mode is enabled. Not posting to twitter. Generated tweet data:', tweetData);
+      }
   
       while (!tweetData || !tweetData.tweet || !tweetData.comment || !tweetData.hashtagsComment) {
         console.log("Generated tweet is null or incomplete, retrying...");
@@ -65,11 +67,51 @@ export async function generateAutoPostTweet() {
 export async function handleQuestion() {
     let tokenData;
     try {
-        // Step 3 call the fetchTokenData function
+        /*
+         Step 3 lets go fetch all the token data so we can generate a tweet based on the info we have.
+         Example Data output:
+
+          -----------------------------------------------------------------
+          ---------------------------DEV DEBUG LOG-------------------------
+          Date Created: Mon, 16 Feb 57046 15:20:00 GMT
+          Token Name: Gainocologist
+          Token Symbol: GAYNS
+          Token Description: $GAYNS 
+
+          This is the only OFFICIAL Gainocology project. 
+
+          The master of Gainocology, The Gainocologist himself. 
+
+          This is the ultimate coin for those who seek a massive dose of financial gain. Forget the prescription pad - just HODL and watch your crypto health skyrocket!
+
+          ca: A5JKRAXup65RJndhfBMR1yo1zxZyds2yyZc1niXypump
+          Token Address: A5JKRAXup65RJndhfBMR1yo1zxZyds2yyZc1niXypump
+          Token Twitter URL: https://x.com/gainocologist
+          Token Website URL: No Website On DexScreener Token Profile
+          -----------------------------------------------------------------
+          Token Price In Sol: 0.0000001763
+          Token Price In USD: 0.00004192
+          Token Volume 24h: 314813.95
+          Token Price Change 5m: -4.94
+          Token Price Change 1h: -62.95
+          Token Price Change 6h: -62.95
+          Token Price Change 24h: -62.95
+          Token Liquidity USD: 25821.76
+          Token Liquidity Base: 307602399
+          Token Liquidity Quote: 54.3758
+          Token FDV: 41923
+          Token Market Cap: 41923
+          -----------------------------------------------------------------
+
+        */
         tokenData = await fetchTokenData();
+        if (config.twitter.settings.devMode) {
+            console.log('Development mode is enabled. Generated token data:', tokenData);
+        }
+
     } catch (error) {
-        console.error("Error fetching token data:", error);
-        throw new Error("Failed to fetch valid token data.");
+        console.error("Error fetching token data going to try again!", error);
+        await handleQuestion();
     }
 
     // Step 4 call the generatePrompt function
@@ -79,7 +121,11 @@ export async function handleQuestion() {
     // If the response is good for the prompt then we can move on to the next step of calling the api with the response.
     let agentResponses;
     try {
+        // Step 5 call the external API with the prompt
+        if (config.twitter.settings.devMode) {
         console.log("Sending request to external API with payload:", { query: prompt });
+        }
+
         const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/twitter-agent-chat', { query: prompt });
         //console.log("Received response from external API:", response.data);
         agentResponses = response.data.agents;
@@ -110,13 +156,12 @@ export async function handleQuestion() {
         await handleQuestion();
     }
 
-    const projectLink = `https://dexscreener.com/solana/${tokenData.tokenAddress}`;
-    const influencers = config.twitter.influencers.twitterHandles;
-    const randomInfluencer = influencers[Math.floor(Math.random() * influencers.length)];
+    //const influencers = config.twitter.influencers.twitterHandles;
+    //const randomInfluencer = influencers[Math.floor(Math.random() * influencers.length)];
 
-    let tweet = `${tweetAgent.name}:\n${tweetAgent.response.replace(tokenData.tokenName, `[${tokenData.tokenName}](${projectLink})`)}`;
-    let comment = `${commentAgent.name}:\n${commentAgent.response.replace(tokenData.tokenName, `[${tokenData.tokenName}](${projectLink})`)}`;
-    let hashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response.replace('${randomInfluencer}', randomInfluencer)}\n`;
+    let tweet = `${tweetAgent.name}:\n${tweetAgent.response}`;
+    let comment = `${commentAgent.name}:\n${commentAgent.response}`;
+    let hashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
 
     if (tweet.length > 280) {
         tweet = tweet.substring(0, 277) + '...';
@@ -132,27 +177,95 @@ export async function handleQuestion() {
         tweet,
         comment,
         hashtagsComment,
-        ...tokenData,
+        //...tokenData,
     };
 
-    //console.log("Final tweet data:", tweetData);
+    if (config.twitter.settings.devMode) {
+        console.log('Development mode is enabled. Generated tweet data:', tweetData);
+    }
 
     return tweetData;
 }
 
 async function generatePrompt(tokenData) {
-  const { tokenName, tokenDescription, tokenAddress, tokenPrice, links } = tokenData;
+  const {
+    dateCreated,
+    tokenName,
+    tokenSymbol,
+    tokenDescription,
+    tokenAddress,
+    tokenTwitterURL,
+    tokenWebsiteURL,
+    tokenPriceInSol,
+    tokenPriceInUSD,
+    tokenVolume24h,
+    tokenPriceChange5m,
+    tokenPriceChange1h,
+    tokenPriceChange6h,
+    tokenPriceChange24h,
+    tokenLiquidityUSD,
+    tokenLiquidityBase,
+    tokenLiquidityQuote,
+    tokenFDV,
+    tokenMarketCap,
+  } = tokenData;
   const influencers = config.twitter.influencers.twitterHandles;
   const randomInfluencer = influencers[Math.floor(Math.random() * influencers.length)];
 
+  /*
+          -----------------------------------------------------------------
+          ---------------------------DEV DEBUG LOG-------------------------
+          Date Created: Mon, 16 Feb 57046 15:20:00 GMT
+          Token Name: Gainocologist
+          Token Symbol: GAYNS
+          Token Description: $GAYNS 
+
+          This is the only OFFICIAL Gainocology project. 
+
+          The master of Gainocology, The Gainocologist himself. 
+
+          This is the ultimate coin for those who seek a massive dose of financial gain. Forget the prescription pad - just HODL and watch your crypto health skyrocket!
+
+          ca: A5JKRAXup65RJndhfBMR1yo1zxZyds2yyZc1niXypump
+          Token Address: A5JKRAXup65RJndhfBMR1yo1zxZyds2yyZc1niXypump
+          Token Twitter URL: https://x.com/gainocologist
+          Token Website URL: No Website On DexScreener Token Profile
+          -----------------------------------------------------------------
+          Token Price In Sol: 0.0000001763
+          Token Price In USD: 0.00004192
+          Token Volume 24h: 314813.95
+          Token Price Change 5m: -4.94
+          Token Price Change 1h: -62.95
+          Token Price Change 6h: -62.95
+          Token Price Change 24h: -62.95
+          Token Liquidity USD: 25821.76
+          Token Liquidity Base: 307602399
+          Token Liquidity Quote: 54.3758
+          Token FDV: 41923
+          Token Market Cap: 41923
+          -----------------------------------------------------------------
+  */
   return `
+    Date Created: ${dateCreated}
     Token Name: ${tokenName}
+    Token Symbol: ${tokenSymbol}
     Token Description: ${tokenDescription}
     Token Address: ${tokenAddress}
-    Token Price: ${tokenPrice}
-    Links: ${links}
-    Random Influencer: ${randomInfluencer}
-    Project Links: ${links}
+    Token Twitter URL: ${tokenTwitterURL}
+    Token Website URL: ${tokenWebsiteURL}
+    Token Price In Sol: ${tokenPriceInSol}
+    Token Price In USD: ${tokenPriceInUSD}
+    Token Volume 24h: ${tokenVolume24h}
+    Token Price Change 5m: ${tokenPriceChange5m}
+    Token Price Change 1h: ${tokenPriceChange1h}
+    Token Price Change 6h: ${tokenPriceChange6h}
+    Token Price Change 24h: ${tokenPriceChange24h}
+    Token Liquidity USD: ${tokenLiquidityUSD}
+    Token Liquidity Base: ${tokenLiquidityBase}
+    Token Liquidity Quote: ${tokenLiquidityQuote}
+    Token FDV: ${tokenFDV}
+    Token Market Cap: ${tokenMarketCap}
+    Random Influencer To Mention: ${randomInfluencer}
   `
 }
 
@@ -169,10 +282,7 @@ export async function postToTwitter(tweetData, client) {
       return;
     }
 
-    //console.log('Tweet data received inside postToTwitter:', tweetData);
-
     const formattedTweet = tweetData.tweet.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-    //console.log('Posting tweet:', formattedTweet);
 
     const { data: createdTweet, headers } = await client.v2.tweet(formattedTweet);
     console.log('Tweet headers:', headers); // Log headers for debugging
@@ -181,7 +291,6 @@ export async function postToTwitter(tweetData, client) {
 
     if (tweetData.comment) {
       const formattedComment = tweetData.comment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-      //console.log('Posting comment:', formattedComment);
       const { headers: commentHeaders } = await client.v2.reply(formattedComment, createdTweet.id);
       console.log('Comment headers:', commentHeaders); // Log headers for debugging
       updateRateLimitInfo(commentHeaders);
@@ -190,7 +299,6 @@ export async function postToTwitter(tweetData, client) {
 
     if (tweetData.hashtagsComment) {
       const formattedHashtagsComment = tweetData.hashtagsComment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-      //console.log('Posting hashtags comment:', formattedHashtagsComment);
       const { headers: hashtagsHeaders } = await client.v2.reply(formattedHashtagsComment, createdTweet.id);
       console.log('Hashtags headers:', hashtagsHeaders); // Log headers for debugging
       updateRateLimitInfo(hashtagsHeaders);
