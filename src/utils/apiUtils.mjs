@@ -14,16 +14,6 @@ export async function fetchCryptoData(cryptoName) {
     }
 }
 
-export async function fetchWeatherData() {
-    try {
-        const response = await axios.get(config.apis.weather.openWeatherMap);
-        return response.data;
-    } catch (error) {
-        console.error('Error fetching weather data:', error);
-        throw new Error('Failed to fetch weather data.');
-    }
-}
-
 export async function fetchCryptoMarketData() {
     try {
         const response = await axios.get(`${config.apis.crypto.coinGecko}/coins/markets`, {
@@ -66,11 +56,14 @@ export async function fetchLatestBoostedTokens() {
   }
 }
 
-export async function fetchTokenName(contractAddress) {
+export async function fetchTokenNameAndSymbol(contractAddress) {
     try {
-        const response = await axios.get(`${config.apis.crypto.raydiumTokenNameUrl}${contractAddress}`);
+        const response = await axios.get(`${config.apis.crypto.raydiumMintIds}${contractAddress}`);
         if (response.data && response.data.success && response.data.data.length > 0) {
-            return response.data.data[0].name;
+            return {
+                tokenName: response.data.data[0].name,
+                tokenSymbol: response.data.data[0].symbol,
+            };
         }
     } catch (error) {
         console.error(`Error fetching token name for contract address ${contractAddress}`);
@@ -79,7 +72,7 @@ export async function fetchTokenName(contractAddress) {
 
 export async function fetchTokenPrice(contractAddress) {
     try {
-        const response = await axios.get(`${config.apis.crypto.raydiumTokenPriceUrl}${contractAddress}`);
+        const response = await axios.get(`${config.apis.crypto.raydiumMintPrice}${contractAddress}`);
         if (response.data && response.data.success && response.data.data[contractAddress]) {
             return response.data.data[contractAddress];
         }
@@ -91,7 +84,36 @@ export async function fetchTokenPrice(contractAddress) {
 export async function fetchTokenPairs(chainId, tokenAddress) {
   try {
     const response = await axios.get(`https://api.dexscreener.com/token-pairs/v1/${chainId}/${tokenAddress}`);
-    return response.data;
+    const tokenPairs = response.data;
+
+    // Filter to exclude the "pumpfun" dexId and take the first valid pair
+    const filteredPair = tokenPairs.find(pair => pair.dexId !== "pumpfun");
+
+    if (!filteredPair) {
+      throw new Error("No valid token pairs found");
+    }
+
+    // Extract required values
+    const result = {
+      tokenName: filteredPair.baseToken.name,
+      tokenSymbol: filteredPair.baseToken.symbol,
+      priceNative: filteredPair.priceNative,
+      priceUsd: filteredPair.priceUsd,
+      txns24h: filteredPair.txns.h24,
+      volume24h: filteredPair.volume.h24,
+      priceChange5m: filteredPair.priceChange.m5,
+      priceChange1h: filteredPair.priceChange.h1,
+      priceChange6h: filteredPair.priceChange.h6,
+      priceChange24h: filteredPair.priceChange.h24,
+      liquidityUsd: filteredPair.liquidity.usd,
+      liquidityBase: filteredPair.liquidity.base,
+      liquidityQuote: filteredPair.liquidity.quote,
+      fdv: filteredPair.fdv,
+      marketCap: filteredPair.marketCap,
+      timeCreated: filteredPair.pairCreatedAt,
+    };
+
+    return result;
   } catch (error) {
     console.error(`Error fetching token pairs for ${tokenAddress} on ${chainId}:`, error);
     throw new Error(`Failed to fetch token pairs for ${tokenAddress} on ${chainId}.`);
@@ -105,5 +127,29 @@ export async function fetchTokenOrders(chainId, tokenAddress) {
   } catch (error) {
     console.error(`Error fetching token orders for ${tokenAddress} on ${chainId}:`, error);
     throw new Error(`Failed to fetch token orders for ${tokenAddress} on ${chainId}.`);
+  }
+}
+
+export async function fetchPoolInfo(contractAddress) {
+  try {
+    const mint1 = 'So11111111111111111111111111111111111111112'; // Default SOL mint address
+    const url = `${globalURLS.raydiumMintAPI}?mint1=${mint1}&mint2=${contractAddress}&poolType=all&poolSortField=default&sortType=desc&pageSize=1&page=1`;
+
+    console.log(`Fetching token details from: ${url}`);
+
+    const response = await axios.get(url);
+    if (config.twitter.settings.devMode) {
+      console.log('Full response from Raydium API:', JSON.stringify(response.data, null, 2));
+    }
+
+    if (response.status === 200 && response.data?.data?.data?.length > 0) {
+      return response.data.data.data[0]; // Adjusted to match nested data structure
+    }
+
+    console.error(`Token details not found for mint address: ${contractAddress}`);
+    return null;
+  } catch (error) {
+    console.error(`Error fetching token details for ${contractAddress}:`, error.message);
+    return null;
   }
 }
