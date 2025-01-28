@@ -37,7 +37,10 @@ function autoPostToTwitter() {
             Tweet to be sent!. ${tweet.tweet}
             Comment: ${tweet.comment}
             Hashtags: ${tweet.hashtagsComment}
-            TokenData: ${JSON.stringify(tweet.tokenData, null, 2)}`);
+            TokenData: ${JSON.stringify(tweet.tokenData, null, 2)}
+            InvestmentResponse: ${tweet.investmentComment}
+            InvestmentDecision: ${tweet.investmentDecisionComment}
+            `);
           return;
         }
 

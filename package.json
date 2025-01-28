@@ -3,6 +3,7 @@
     "@aws-sdk/client-dynamodb": "^3.734.0",
     "@aws-sdk/lib-dynamodb": "^3.734.0",
     "axios": "^1.7.9",
+    "crypto": "^1.0.1",
     "dotenv": "^16.4.7",
     "twitter-api-v2": "^1.19.0"
   }

@@ -50,6 +50,8 @@ export async function saveTweetData(tweetId, date, tweet, comment, hashtags, ana
           Comment: comment,      // Reply comment
           Hashtags: hashtags,    // Hashtags as a string
           AnaylsisResponse: analysisResponse,   // Analysis response
+          InvestmentComment: investmentComment,  // Investment comment
+          InvestmentDecisionComment: investmentDecisionComment,  // Investment decision comment
           TweetData: tweetData,  // Additional tweet data
         }
       };

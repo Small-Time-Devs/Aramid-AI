@@ -158,6 +158,10 @@ export async function handleQuestion() {
       console.log("Investment Decision:", investmentDecision);
     }
 
+    if (!analystResponse) {
+      console.error("Invalid analyst response, generating again.");
+      await handleQuestion();
+    }
     if (!tweetAgent || !tweetAgent.name || !tweetAgent.response) {
         console.error("Invalid tweet agent response, generating again.");
         await handleQuestion();
@@ -170,13 +174,16 @@ export async function handleQuestion() {
         console.error("Invalid hashtags agent response, generating again.");
         await handleQuestion();
     }
-
-    //const influencers = config.twitter.influencers.twitterHandles;
-    //const randomInfluencer = influencers[Math.floor(Math.random() * influencers.length)];
+    if (!investmentAgent || !investmentAgent.response || !investmentAgent.decision) {
+        console.error("Invalid investment agent response, generating again.");
+        await handleQuestion();
+    }
 
     let tweet = `${tweetAgent.name}:\n${tweetAgent.response}`;
     let comment = `${commentAgent.name}:\n${commentAgent.response}`;
     let hashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
+    let investmentComment = `${investmentAgent.name}:\n${investmentAgent.response}`;
+    let investmentDecisionComment = `${investmentAgent.name}:\n${investmentAgent.decision}`;
 
     if (tweet.length > 280) {
         tweet = tweet.substring(0, 277) + '...';
@@ -194,7 +201,8 @@ export async function handleQuestion() {
         hashtagsComment,
         tokenData,
         analystResponse,
-
+        investmentComment,
+        investmentDecisionComment,
     };
 
     if (config.twitter.settings.devMode) {
@@ -300,6 +308,12 @@ export async function postToTwitter(tweetData, client) {
       return;
     }
 
+    // Make the purchase decision based on the investment comment
+    if (tweetData.investmentDecisionComment && (tweetData.investmentDecisionComment.startsWith("Invest") || tweetData.investmentDecisionComment.startsWith("Quick Profits"))) {
+
+    }
+
+
     //const formattedTweet = tweetData.tweet.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
     //const { data: createdTweet, headers } = await client.v2.tweet(formattedTweet);
     const { data: createdTweet, headers } = await client.v2.tweet(tweetData.tweet);
@@ -312,6 +326,12 @@ export async function postToTwitter(tweetData, client) {
       const { headers: commentHeaders } = await client.v2.reply(tweetData.comment, createdTweet.id);
       updateRateLimitInfo(commentHeaders);
       console.log('Comment posted successfully:', tweetData.comment);
+    }
+    
+    if (tweetData.investmentComment && (tweetData.investmentComment.startsWith("Invest") || tweetData.investmentComment.startsWith("Quick Profits"))) {
+      const { headers: investmentCommentHeaders } = await client.v2.reply(tweetData.investmentComment, createdTweet.id);
+      updateRateLimitInfo(investmentCommentHeaders);
+      console.log('Investment decision comment posted successfully:', tweetData.investmentComment);
     }
 
     if (tweetData.hashtagsComment) {
@@ -327,8 +347,8 @@ export async function postToTwitter(tweetData, client) {
     const formatedTokenData = JSON.stringify(tweetData.tokenData, null, 2);
     // 
     // Save tweet data to DynamoDB
-    if (tweetData.tweet && createdTweet.id && tweetData.comment && tweetData.hashtagsComment && tweetData.analystResponse && formatedTokenData ) {
-      await saveTweetData(createdTweet.id, new Date().toISOString(), tweetData.tweet, tweetData.comment, tweetData.hashtagsComment, tweetData.analystResponse, formatedTokenData );
+    if (tweetData.tweet && createdTweet.id && tweetData.comment && tweetData.hashtagsComment && tweetData.analystResponse && tweetData.investmentComment && tweetData.investmentDecisionComment && formatedTokenData ) {
+      await saveTweetData(createdTweet.id, new Date().toISOString(), tweetData.tweet, tweetData.comment, tweetData.hashtagsComment, tweetData.analystResponse, tweetData.investmentComment, tweetData.investmentDecisionComment, formatedTokenData );
     }
 
     return createdTweet;
