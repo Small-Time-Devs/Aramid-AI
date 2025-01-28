@@ -41,7 +41,6 @@ function autoPostToTwitter() {
             InvestmentResponse: ${tweet.investmentComment}
             InvestmentDecision: ${tweet.investmentDecisionComment}
             `);
-          return;
         }
 
         if (tweet === undefined) {

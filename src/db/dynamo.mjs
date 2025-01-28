@@ -1,10 +1,11 @@
-import { config as dotenvConfig } from 'dotenv';
+import { config } from '../config/config.mjs';
+import { config as dotEnvConfig } from 'dotenv';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import pkg from '@aws-sdk/lib-dynamodb';
 const { DynamoDBDocumentClient, QueryCommand, PutCommand, ScanCommand, GetCommand, UpdateCommand, DeleteCommand, marshall, unmarshall } = pkg;
 
 // Load environment variables from .env file
-dotenvConfig();
+dotEnvConfig();
 
 // Import keys from environment variables
 const ACCESS_KEY = process.env.ACCESS_KEY;
@@ -65,4 +66,111 @@ export async function saveTweetData(tweetId, date, tweet, comment, hashtags, ana
       throw error;
     }
   }
-  
+
+// Store trade information in DynamoDB
+export async function storeTradeInfo(data) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      Item: {
+        tradeId: `${Date.now()}-${Math.random().toString(36).substring(2, 8)}`,
+        tokenName: data.tokenName,
+        tokenAddress: data.tokenAddress,
+        amountInvested: data.amountInvested,
+        entryPriceSOL: data.entryPriceSOL,
+        entryPriceUSD: data.entryPriceUSD,
+        exitPriceSOL: data.exitPriceSOL || null,
+        exitPriceUSD: data.exitPriceUSD || null,
+        targetPercentageGain: data.targetPercentageGain,
+        targetPercentageLoss: data.targetPercentageLoss,
+        sellPercentageGain: data.sellPercentageGain || null,
+        sellPercentageLoss: data.sellPercentageLoss || null,
+        status: 'ACTIVE',
+        timestamp: new Date().toISOString()
+      }
+    };
+
+    const command = new PutCommand(params);
+    await docClient.send(command);
+    return params.Item.tradeId;
+  } catch (error) {
+    console.error('Error storing trade info:', error);
+    throw error;
+  }
+}
+
+// Update trade with sell information
+export async function updateTradeWithSellInfo(tradeId, sellData) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      Key: { tradeId },
+      UpdateExpression: 'SET exitPriceSOL = :exitSOL, exitPriceUSD = :exitUSD, sellPercentageGain = :gain, sellPercentageLoss = :loss, status = :status',
+      ExpressionAttributeValues: {
+        ':exitSOL': sellData.exitPriceSOL,
+        ':exitUSD': sellData.exitPriceUSD,
+        ':gain': sellData.sellPercentageGain,
+        ':loss': sellData.sellPercentageLoss,
+        ':status': 'COMPLETED'
+      }
+    };
+
+    const command = new UpdateCommand(params);
+    await docClient.send(command);
+  } catch (error) {
+    console.error('Error updating trade with sell info:', error);
+    throw error;
+  }
+}
+
+// Get trade information from DynamoDB
+export async function getTrade(tradeId) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      Key: { tradeId }
+    };
+
+    const command = new GetCommand(params);
+    const response = await docClient.send(command);
+    
+    if (!response.Item) {
+      throw new Error(`No trade found with ID: ${tradeId}`);
+    }
+
+    return response.Item;
+  } catch (error) {
+    console.error(`Error getting trade with ID ${tradeId}:`, error);
+    throw error;
+  }
+}
+
+// Get wallet details
+export async function getWalletDetails() {
+    console.log('Getting wallet details');
+    console.log('Public key:', config.cryptoGlobals.publicKey);
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Wallets',
+      Key: { 
+        solPublicKey: config.settings.publicKey // Using original config import
+      }
+    };
+
+    const command = new GetCommand(params);
+    const response = await docClient.send(command);
+    
+    if (!response.Item) {
+      throw new Error('No wallet details found');
+    }
+
+    // Return the wallet details with the encrypted private key
+    return {
+      solPublicKey: response.Item.solPublicKey,
+      solPrivateKey: response.Item.solPrivateKey
+    };
+  } catch (error) {
+    console.error('Error getting wallet details:', error);
+    throw error;
+  }
+}

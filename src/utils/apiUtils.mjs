@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { config } from '../config/config.mjs';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { getMint } from '@solana/spl-token';
 
 export async function fetchCryptoData(cryptoName) {
     try {
@@ -151,5 +153,27 @@ export async function fetchPoolInfo(contractAddress) {
   } catch (error) {
     console.error(`Error fetching token details for ${contractAddress}:`, error.message);
     return null;
+  }
+}
+
+export async function checkTokenAuthority(mintAddress) {
+  try {
+    const connection = new Connection(config.cryptoGlobals.rpcNode);
+    const mintPublicKey = new PublicKey(mintAddress);
+    
+    const mintInfo = await getMint(connection, mintPublicKey);
+    
+    const hasFreeze = mintInfo.freezeAuthority !== null;
+    const hasMint = mintInfo.mintAuthority !== null;
+    
+    return {
+      safe: !hasFreeze && !hasMint,
+      hasFreeze,
+      hasMint,
+      decimals: mintInfo.decimals,
+    };
+  } catch (error) {
+    console.error('Error checking token authority:', error);
+    throw error;
   }
 }

@@ -4,6 +4,10 @@ import { TwitterApi } from "twitter-api-v2";
 import { checkRateLimit, updateRateLimitInfo, fetchWithTimeout, fetchTokenData } from "./utils/helpers.mjs";
 import axios from 'axios';
 import { saveTweetData } from './db/dynamo.mjs';
+import { decryptPrivateKey } from './encryption/encryption.mjs';
+import { storeTradeInfo } from './db/dynamo.mjs';
+import { startPriceMonitoring } from './trading/pnl.mjs';
+import { executeTradeBuy } from './trading/buy.mjs';
 
 dotenv.config();
 const url = 'https://api.smalltimedevs.com/ai/hive-engine'
@@ -183,7 +187,7 @@ export async function handleQuestion() {
     let comment = `${commentAgent.name}:\n${commentAgent.response}`;
     let hashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
     let investmentComment = `${investmentAgent.name}:\n${investmentAgent.response}`;
-    let investmentDecisionComment = `${investmentAgent.name}:\n${investmentAgent.decision}`;
+    let investmentDecisionComment = `${investmentAgent.decision}`;
 
     if (tweet.length > 280) {
         tweet = tweet.substring(0, 277) + '...';
@@ -296,9 +300,46 @@ async function generatePrompt(tokenData) {
 
 export async function postToTwitter(tweetData, client) {
   try {
+    console.log('Starting postToTwitter function with trade data:', {
+      investmentDecision: tweetData.investmentDecisionComment,
+      tokenDetails: {
+        name: tweetData.tokenData.tokenName,
+        address: tweetData.tokenData.tokenAddress,
+        priceSOL: tweetData.tokenData.tokenPriceInSol
+      }
+    });
 
+    // Trading logic should execute regardless of dev mode
+    if (tweetData.investmentDecisionComment && 
+        (tweetData.investmentDecisionComment.startsWith("Invest") || 
+         tweetData.investmentDecisionComment.startsWith("Quick Profit"))) {
+      
+      let targetGain, targetLoss;
+      
+      if (tweetData.investmentDecisionComment.startsWith("Quick Profit")) {
+        const gainMatch = tweetData.investmentDecisionComment.match(/Gain \+(\d+)%/);
+        const lossMatch = tweetData.investmentDecisionComment.match(/Loss -(\d+)%/);
+        
+        targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
+        targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
+
+        console.log('Extracted trade parameters:', { targetGain, targetLoss });
+        
+        // Execute trade and wait for result
+        const tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss);
+        console.log('Trade execution result:', tradeResult);
+        
+        if (!tradeResult.success) {
+          console.error('Trade execution failed:', tradeResult.error);
+        } else {
+          console.log('Trade executed successfully. Trade ID:', tradeResult.tradeId);
+        }
+      }
+    }
+
+    // Twitter posting logic
     if (config.twitter.settings.devMode) {
-      console.log('Development mode is enabled. Not posting to twitter. Generated tweet data:', tweetData);
+      console.log('Development mode is enabled. Skipping Twitter posts.');
       return;
     }
 
@@ -307,12 +348,6 @@ export async function postToTwitter(tweetData, client) {
       console.log('Skipping post due to rate limit.');
       return;
     }
-
-    // Make the purchase decision based on the investment comment
-    if (tweetData.investmentDecisionComment && (tweetData.investmentDecisionComment.startsWith("Invest") || tweetData.investmentDecisionComment.startsWith("Quick Profits"))) {
-
-    }
-
 
     //const formattedTweet = tweetData.tweet.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
     //const { data: createdTweet, headers } = await client.v2.tweet(formattedTweet);
