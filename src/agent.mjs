@@ -142,9 +142,21 @@ export async function handleQuestion() {
 
     const anaylstAgent = agentResponses[0];
     const analystResponse = anaylstAgent.response;
-    const tweetAgent = agentResponses[1];
-    const commentAgent = agentResponses[2];
-    const hashtagsAgent = agentResponses[3];
+    const investmentAgent = agentResponses[1];
+    const investmentReponse = investmentAgent.response;
+    const investmentDecision = investmentAgent.decision;
+    const tweetAgent = agentResponses[2];
+    const commentAgent = agentResponses[3];
+    const hashtagsAgent = agentResponses[4];
+
+    if (config.twitter.settings.devMode) {
+      console.log("Analyst Response:", analystResponse);
+      console.log("Tweet Agent Response:", tweetAgent.response);
+      console.log("Comment Agent Response:", commentAgent.response);
+      console.log("Hashtags Agent Response:", hashtagsAgent.response);
+      console.log("Investment Response:", investmentReponse);
+      console.log("Investment Decision:", investmentDecision);
+    }
 
     if (!tweetAgent || !tweetAgent.name || !tweetAgent.response) {
         console.error("Invalid tweet agent response, generating again.");
@@ -182,6 +194,7 @@ export async function handleQuestion() {
         hashtagsComment,
         tokenData,
         analystResponse,
+
     };
 
     if (config.twitter.settings.devMode) {
