@@ -140,6 +140,8 @@ export async function handleQuestion() {
         throw new Error("Invalid agent responses received from API.");
     }
 
+    const anaylstAgent = agentResponses[0];
+    const analystResponse = anaylstAgent.response;
     const tweetAgent = agentResponses[1];
     const commentAgent = agentResponses[2];
     const hashtagsAgent = agentResponses[3];
@@ -178,7 +180,8 @@ export async function handleQuestion() {
         tweet,
         comment,
         hashtagsComment,
-        //...tokenData,
+        tokenData,
+        analystResponse,
     };
 
     if (config.twitter.settings.devMode) {
@@ -307,9 +310,12 @@ export async function postToTwitter(tweetData, client) {
       console.log('Hashtags comment posted successfully:', tweetData.hashtagsComment);
     }
 
+    // Formated Token Data
+    const formatedTokenData = JSON.stringify(tweetData.tokenData, null, 2);
+    // 
     // Save tweet data to DynamoDB
-    if (tweetData.tweet && createdTweet.id && tweetData.comment && tweetData.hashtagsComment) {
-      await saveTweetData(createdTweet.id, new Date().toISOString(), tweetData.tweet, tweetData.comment, tweetData.hashtagsComment );
+    if (tweetData.tweet && createdTweet.id && tweetData.comment && tweetData.hashtagsComment && tweetData.analystResponse && formatedTokenData ) {
+      await saveTweetData(createdTweet.id, new Date().toISOString(), tweetData.tweet, tweetData.comment, tweetData.hashtagsComment, tweetData.analystResponse, formatedTokenData );
     }
 
     return createdTweet;

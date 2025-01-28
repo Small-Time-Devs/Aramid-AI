@@ -33,9 +33,11 @@ function autoPostToTwitter() {
         const tweet = await twitterProfessional.generateAutoPostTweet();
         if (config.twitter.settings.devMode) {
           console.log(`Dev mode enabled, 
+            Agents Analysis: ${tweet.analystResponse}
             Tweet to be sent!. ${tweet.tweet}
             Comment: ${tweet.comment}
-            Hashtags: ${tweet.hashtagsComment}`);
+            Hashtags: ${tweet.hashtagsComment}
+            TokenData: ${JSON.stringify(tweet.tokenData, null, 2)}`);
           return;
         }
 

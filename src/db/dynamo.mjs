@@ -37,7 +37,7 @@ const docClient = DynamoDBDocumentClient.from(client, {
   },
 });
 
-export async function saveTweetData(tweetId, date, tweet, comment, hashtags) {
+export async function saveTweetData(tweetId, date, tweet, comment, hashtags, analysisResponse, tweetData ) {
     const tableName = 'AramidAI-X-Past-Tweets';
   
     try {
@@ -48,7 +48,9 @@ export async function saveTweetData(tweetId, date, tweet, comment, hashtags) {
           Date: date,            // ISO format date string
           Tweet: tweet,          // Main tweet content
           Comment: comment,      // Reply comment
-          Hashtags: hashtags    // Hashtags as a string
+          Hashtags: hashtags,    // Hashtags as a string
+          AnaylsisResponse: analysisResponse,   // Analysis response
+          TweetData: tweetData,  // Additional tweet data
         }
       };
   
