@@ -209,3 +209,28 @@ export async function fetchTokenData() {
     await fetchTokenData();
   }
 }
+
+export async function getUserIdByUsername(username) {
+  const client = new TwitterApi({
+    appKey: `${config.twitter.keys.appKey}`,
+    appSecret: `${config.twitter.keys.appSecret}`,
+    accessToken: `${config.twitter.keys.accessToken}`,
+    accessSecret: `${config.twitter.keys.accessSecret}`,
+  });
+
+  try {
+    // Fetch the user by username
+    const user = await client.v2.userByUsername(username);
+
+    if (user && user.data && user.data.id) {
+      console.log(`User ID for @${username}:`, user.data.id);
+      return user.data.id;
+    } else {
+      console.log(`No user found with username: @${username}`);
+      return null;
+    }
+  } catch (error) {
+    console.error("Error fetching user ID:", error);
+    return null;
+  }
+}

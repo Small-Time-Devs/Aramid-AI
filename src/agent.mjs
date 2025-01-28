@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import { TwitterApi } from "twitter-api-v2";
 import { checkRateLimit, updateRateLimitInfo, fetchWithTimeout, fetchTokenData } from "./utils/helpers.mjs";
 import axios from 'axios';
+import { saveTweetData } from './db/dynamo.mjs';
 
 dotenv.config();
 const url = 'https://api.smalltimedevs.com/ai/hive-engine'
@@ -271,9 +272,10 @@ async function generatePrompt(tokenData) {
 
 export async function postToTwitter(tweetData, client) {
   try {
+
     if (config.twitter.settings.devMode) {
       console.log('Development mode is enabled. Not posting to twitter. Generated tweet data:', tweetData);
-      return tweetData;
+      return;
     }
 
     const canPost = await checkRateLimit(client);
@@ -282,27 +284,32 @@ export async function postToTwitter(tweetData, client) {
       return;
     }
 
-    const formattedTweet = tweetData.tweet.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-
-    const { data: createdTweet, headers } = await client.v2.tweet(formattedTweet);
-    console.log('Tweet headers:', headers); // Log headers for debugging
+    //const formattedTweet = tweetData.tweet.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
+    //const { data: createdTweet, headers } = await client.v2.tweet(formattedTweet);
+    const { data: createdTweet, headers } = await client.v2.tweet(tweetData.tweet);
     updateRateLimitInfo(headers);
     console.log('Tweet posted successfully:', createdTweet);
 
     if (tweetData.comment) {
-      const formattedComment = tweetData.comment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-      const { headers: commentHeaders } = await client.v2.reply(formattedComment, createdTweet.id);
-      console.log('Comment headers:', commentHeaders); // Log headers for debugging
+      //const formattedComment = tweetData.comment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
+      //const { headers: commentHeaders } = await client.v2.reply(formattedComment, createdTweet.id);
+      const { headers: commentHeaders } = await client.v2.reply(tweetData.comment, createdTweet.id);
       updateRateLimitInfo(commentHeaders);
-      console.log('Comment posted successfully:', formattedComment);
+      console.log('Comment posted successfully:', tweetData.comment);
     }
 
     if (tweetData.hashtagsComment) {
-      const formattedHashtagsComment = tweetData.hashtagsComment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-      const { headers: hashtagsHeaders } = await client.v2.reply(formattedHashtagsComment, createdTweet.id);
+      //const formattedHashtagsComment = tweetData.hashtagsComment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
+      //const { headers: hashtagsHeaders } = await client.v2.reply(formattedHashtagsComment, createdTweet.id);
+      const { headers: hashtagsHeaders } = await client.v2.reply(tweetData.hashtagsComment, createdTweet.id);
       console.log('Hashtags headers:', hashtagsHeaders); // Log headers for debugging
       updateRateLimitInfo(hashtagsHeaders);
-      console.log('Hashtags comment posted successfully:', formattedHashtagsComment);
+      console.log('Hashtags comment posted successfully:', tweetData.hashtagsComment);
+    }
+
+    // Save tweet data to DynamoDB
+    if (tweetData.tweet && createdTweet.id && tweetData.comment && tweetData.hashtagsComment) {
+      await saveTweetData(createdTweet.id, new Date().toISOString(), tweetData.tweet, tweetData.comment, tweetData.hashtagsComment );
     }
 
     return createdTweet;
@@ -323,7 +330,7 @@ export async function postToTwitter(tweetData, client) {
   }
 }
 
-export async function scanAndRespondToPosts() {
+export async function scanAndRespondToOtherUserTweets(targetUserId) {
   const client = new TwitterApi({
     appKey: `${config.twitter.keys.appKey}`,
     appSecret: `${config.twitter.keys.appSecret}`,
@@ -332,11 +339,21 @@ export async function scanAndRespondToPosts() {
   });
 
   try {
-    const { data } = await client.v2.userTimeline(config.twitter.twitterUserID, { max_results: 5 }); // Set max_results to a valid value
+    // Fetch the latest tweets from the target user's timeline
+    const { data } = await client.v2.userTimeline(targetUserId, { max_results: 5 });
     const tweets = data.data;
+
+    if (!tweets || tweets.length === 0) {
+      console.log('No tweets found for the specified user.');
+      return;
+    }
+
     for (const tweet of tweets) {
       if (tweet.in_reply_to_user_id === null) {
+        // Send tweet text to OpenAI and generate a response
         const response = await generateResponseToTweet(tweet.text);
+
+        // Post the response as a reply to the original tweet
         await client.v2.reply(response, tweet.id);
         console.log('Replied to tweet:', tweet.id);
       }
