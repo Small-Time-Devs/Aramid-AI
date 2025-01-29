@@ -1,6 +1,8 @@
-import { getTrade } from '../db/dynamo.mjs';
+import { getTrade, getActiveTrades } from '../db/dynamo.mjs';
 import { executeTradeSell } from './sell.mjs';
 import { fetchTokenPairs } from '../utils/apiUtils.mjs';
+import { config } from '../config/config.mjs';
+import { config as dotEnvConfig} from 'dotenv';
 
 const activeTrades = new Map();
 const MONITOR_INTERVAL = 5000; // 5 seconds
@@ -49,13 +51,15 @@ export async function startPriceMonitoring(tradeId) {
       const currentPrice = tokenData.priceNative;
       const priceChangePercent = calculatePriceChange(currentPrice, trade.entryPriceSOL);
 
-      console.log(`[${new Date().toISOString()}] Monitoring trade ${tradeId}:`, {
-        currentPrice,
-        entryPrice: trade.entryPriceSOL,
-        priceChange: priceChangePercent,
-        targetGain: trade.targetPercentageGain,
-        targetLoss: trade.targetPercentageLoss
-      });
+      if (config.twitter.settings.devMode) {
+        console.log(`[${new Date().toISOString()}] Monitoring trade ${tradeId}:`, {
+            currentPrice,
+            entryPrice: trade.entryPriceSOL,
+            priceChange: priceChangePercent,
+            targetGain: trade.targetPercentageGain,
+            targetLoss: trade.targetPercentageLoss
+        });
+      }
 
       if (shouldSell(priceChangePercent, trade)) {
         await executeTradeSell(trade, currentPrice);
@@ -72,6 +76,28 @@ export async function startPriceMonitoring(tradeId) {
 
   activeTrades.set(tradeId, true);
   monitor();
+}
+
+export async function initializeTradeMonitoring() {
+  try {
+    console.log('Initializing trade monitoring...');
+    const activeTradesFromDB = await getActiveTrades();
+    
+    if (activeTradesFromDB.length > 0) {
+      console.log(`Found ${activeTradesFromDB.length} active trades to monitor`);
+      
+      for (const trade of activeTradesFromDB) {
+        if (!activeTrades.has(trade.tradeId)) { // Using the Map instance
+          console.log(`Starting monitoring for trade ${trade.tradeId}`);
+          startPriceMonitoring(trade.tradeId);
+        }
+      }
+    } else {
+      console.log('No active trades found to monitor');
+    }
+  } catch (error) {
+    console.error('Error initializing trade monitoring:', error);
+  }
 }
 
 function calculatePriceChange(currentPrice, entryPrice) {

@@ -13,7 +13,7 @@ export const config = {
         },
         settings: {
             xAutoPoster: true,
-            devMode: true,
+            devMode: false,
             xAutoResponder: false,
             postsPerDay: 100,
             postsPerMonth: 3000,

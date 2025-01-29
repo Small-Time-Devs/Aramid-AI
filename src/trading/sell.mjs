@@ -2,6 +2,7 @@ import axios from 'axios';
 import { getWalletDetails, updateTradeWithSellInfo } from '../db/dynamo.mjs';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { fetchTokenPairs } from '../utils/apiUtils.mjs';
+import { config } from '../config/config.mjs';
 
 export async function executeTradeSell(trade, currentPrice) {
   try {
@@ -16,14 +17,25 @@ export async function executeTradeSell(trade, currentPrice) {
     const decryptedPrivateKey = decryptPrivateKey(walletDetails.solPrivateKey);
     console.log('Private key decrypted successfully');
 
+    // Calculate sell amount (slightly less than total to ensure success)
+    const sellAmount = Math.max(0, trade.tokensReceived - 0.001);
+    
     const sellRequest = {
       private_key: decryptedPrivateKey, // Using decrypted private key
       public_key: walletDetails.solPublicKey,
       mint: trade.tokenAddress,
-      priorityFee: 5000,
-      slippage: 100,
-      useJito: true
+      amount: sellAmount, // Add the amount to sell
+      referralPublicKey: 'G479Un81UEDZEeHPv23Uy9n2qqgy1CzT7muJVj7PUHJF',
+      priorityFee: 150000,
+      slippage: 500,
+      useJito: false
     };
+
+    console.log('Executing sell with parameters:', {
+      mint: trade.tokenAddress,
+      amount: sellAmount,
+      currentPrice
+    });
 
     const sellResponse = await axios.post('https://api.smalltimedevs.com/solana/raydium-api/aramidSell', sellRequest);
 

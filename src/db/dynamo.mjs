@@ -38,9 +38,9 @@ const docClient = DynamoDBDocumentClient.from(client, {
   },
 });
 
-export async function saveTweetData(tweetId, date, tweet, comment, hashtags, analysisResponse, tweetData ) {
+export async function saveTweetData(tweetId, date, tweet, comment, hashtags, analysisResponse, investmentComment, investmentDecisionComment, tweetData ) {
     const tableName = 'AramidAI-X-Past-Tweets';
-  
+
     try {
       const putParams = {
         TableName: tableName,
@@ -86,6 +86,7 @@ export async function storeTradeInfo(data) {
         sellPercentageGain: data.sellPercentageGain || null,
         sellPercentageLoss: data.sellPercentageLoss || null,
         status: 'ACTIVE',
+        tokensReceived: data.tokensReceived, // Add new field for tokens received
         timestamp: new Date().toISOString()
       }
     };
@@ -105,13 +106,16 @@ export async function updateTradeWithSellInfo(tradeId, sellData) {
     const params = {
       TableName: 'AramidAI-X-Trades',
       Key: { tradeId },
-      UpdateExpression: 'SET exitPriceSOL = :exitSOL, exitPriceUSD = :exitUSD, sellPercentageGain = :gain, sellPercentageLoss = :loss, status = :status',
+      UpdateExpression: 'SET exitPriceSOL = :exitSOL, exitPriceUSD = :exitUSD, sellPercentageGain = :gain, sellPercentageLoss = :loss, #tradeStatus = :statusValue',
+      ExpressionAttributeNames: {
+        '#tradeStatus': 'status'  // Use a different name for the status attribute
+      },
       ExpressionAttributeValues: {
         ':exitSOL': sellData.exitPriceSOL,
         ':exitUSD': sellData.exitPriceUSD,
         ':gain': sellData.sellPercentageGain,
         ':loss': sellData.sellPercentageLoss,
-        ':status': 'COMPLETED'
+        ':statusValue': 'COMPLETED'
       }
     };
 
@@ -145,6 +149,30 @@ export async function getTrade(tradeId) {
   }
 }
 
+// Get all active trades
+export async function getActiveTrades() {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      FilterExpression: '#status = :status',
+      ExpressionAttributeNames: {
+        '#status': 'status'
+      },
+      ExpressionAttributeValues: {
+        ':status': 'ACTIVE'
+      }
+    };
+
+    const command = new ScanCommand(params);
+    const response = await docClient.send(command);
+    
+    return response.Items || [];
+  } catch (error) {
+    console.error('Error getting active trades:', error);
+    throw error;
+  }
+}
+
 // Get wallet details
 export async function getWalletDetails() {
     console.log('Getting wallet details');
@@ -153,7 +181,7 @@ export async function getWalletDetails() {
     const params = {
       TableName: 'AramidAI-X-Wallets',
       Key: { 
-        solPublicKey: config.settings.publicKey // Using original config import
+        solPublicKey: config.cryptoGlobals.publicKey // Using original config import
       }
     };
 

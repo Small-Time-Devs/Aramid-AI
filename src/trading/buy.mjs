@@ -32,7 +32,7 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss) {
       amount: 0.01, // Default investment amount in SOL
       referralPublicKey: 'G479Un81UEDZEeHPv23Uy9n2qqgy1CzT7muJVj7PUHJF',
       priorityFee: 150000, // Default priority fee
-      slippage: 300, // 3% slippage
+      slippage: 500, // 5% slippage
       useJito: false
     };
 
@@ -48,13 +48,18 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss) {
         entryPriceSOL: tweetData.tokenData.tokenPriceInSol,
         entryPriceUSD: tweetData.tokenData.tokenPriceInUSD,
         targetPercentageGain: targetGain,
-        targetPercentageLoss: targetLoss
+        targetPercentageLoss: targetLoss,
+        tokensReceived: buyResponse.data.tokensPurchased, // Store tokens received
       });
 
       // Start monitoring price for this trade
       startPriceMonitoring(tradeId);
       
-      return { success: true, tradeId };
+      return { 
+        success: true, 
+        tradeId,
+        txId: buyResponse.data.txid // Add transaction ID to response
+      };
     }
     
     return { success: false, error: 'Buy order failed' };
