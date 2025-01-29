@@ -22,7 +22,7 @@ function autoPostToTwitter() {
   const maxPostsPerMonth = config.twitter.settings.postsPerMonth;
   const postsPerDay = config.twitter.settings.postsPerDay;
   const maxPostsPerDay = Math.min(postsPerDay, Math.floor(maxPostsPerMonth / 30));
-  const maxTweetsPerDay = Math.floor(maxPostsPerDay / 3); // Each post is 3 tweets (tweet, comment, hashtags)
+  const maxTweetsPerDay = Math.floor(maxPostsPerDay / 2); // Each post is 2 tweets (tweet, comment, hashtags)
   const interval = 24 * 60 * 60 * 1000 / maxTweetsPerDay; // Interval in milliseconds
 
   const client = new TwitterApi({

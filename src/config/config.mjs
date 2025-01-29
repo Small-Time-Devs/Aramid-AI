@@ -35,11 +35,14 @@ export const config = {
     },
 
     cryptoGlobals: {
+        tradeTokens: true,
+        tradeTokensInBackground: true, // WIP not implemented yet
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
-        investmentAmountInSol: 0.05,
-        slippage: 500, // 5% slippage
+        investmentAmountInSol: 0.1,
+        buySlippage: 500, // 5% slippage
+        sellSlippage: 1500, // 15% slippage
         priorityFee: 150000, // Default priority fee
         referralPublicKey: 'G479Un81UEDZEeHPv23Uy9n2qqgy1CzT7muJVj7PUHJF',
         useJito: false,

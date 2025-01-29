@@ -321,19 +321,6 @@ async function generatePrompt(tokenData) {
 }
 
 export async function postToTwitter(tweetData, client) {
-          /*
-        tweet,
-        comment,
-
-        agetnAnalysisComment,
-        agentTweetPost,
-        agentComment,
-        agetnHashtagsComment,
-        agentInvestmentComment,
-        agentInvestmentDecisionComment,
-        tokenData,
-
-        */
   try {
     console.log('Starting postToTwitter function with trade data:', {
       investmentDecision: tweetData.agentInvestmentDecisionComment,
@@ -344,14 +331,13 @@ export async function postToTwitter(tweetData, client) {
       }
     });
 
-    let tradeResult = null; // Initialize tradeResult
+    let tradeResult = null;
 
-    // Trading logic should execute regardless of dev mode
-    if (tweetData.agentInvestmentDecisionComment && 
+    // Only proceed with trading if tradeTokens is enabled
+    if (config.cryptoGlobals.tradeTokens && tweetData.agentInvestmentDecisionComment && 
         (tweetData.agentInvestmentDecisionComment.startsWith("Invest") || 
          tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit") ||
-         tweetData.agentInvestmentDecisionComment.startsWith("Degen")
-        )) {
+         tweetData.agentInvestmentDecisionComment.startsWith("Degen"))) {
       
       let targetGain, targetLoss;
       
@@ -361,27 +347,44 @@ export async function postToTwitter(tweetData, client) {
         
         targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
         targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
+      } else if (tweetData.agentInvestmentDecisionComment.startsWith("Degen")) {
+        // Handle Degen format: "Degen: Gain +50% to +100%, Loss -50%"
+        const gainMatch = tweetData.agentInvestmentDecisionComment.match(/Gain \+(\d+)% to \+(\d+)%/);
+        const lossMatch = tweetData.agentInvestmentDecisionComment.match(/Loss -(\d+)%/);
+        
+        // For Degen, use the lower gain target to be conservative
+        targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
+        targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 50;
+      } else {
+        // Regular Invest format
+        const targetGainMatch = tweetData.agentInvestmentDecisionComment.match(/take profit at (\d+)%/i);
+        const targetLossMatch = tweetData.agentInvestmentDecisionComment.match(/stop loss at (\d+)%/i);
+        
+        targetGain = targetGainMatch ? parseFloat(targetGainMatch[1]) : 50;
+        targetLoss = targetLossMatch ? parseFloat(targetLossMatch[1]) : 20;
+      }
 
-        console.log('Extracted trade parameters:', { targetGain, targetLoss });
-        
-        // Execute trade and wait for result
-        tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss);
-        console.log('Trade execution result:', tradeResult);
-        
-        if (!tradeResult.success) {
-          console.error('Trade execution failed:', tradeResult.error);
-        } else {
-          console.log('Trade executed successfully. Trade ID:', tradeResult.tradeId);
-        }
+      console.log('Extracted trade parameters:', { targetGain, targetLoss });
+      
+      // Execute trade and wait for result
+      tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss);
+      console.log('Trade execution result:', tradeResult);
+      
+      if (!tradeResult.success) {
+        console.error('Trade execution failed:', tradeResult.error);
+      } else {
+        console.log('Trade executed successfully. Trade ID:', tradeResult.tradeId);
       }
 
       if (tradeResult && tradeResult.success && tradeResult.txId) {
         const tradeComment = `I put my money where my agent's mouth is! Check out the trade: https://solscan.io/tx/${tradeResult.txId} 🚀`;
         tweetData.comment = tweetData.comment + '\n' + tradeComment;
       }
+    } else if (!config.cryptoGlobals.tradeTokens) {
+      console.log('Trading is disabled in config. Skipping trade execution.');
     }
 
-    // Twitter posting logic
+    // Twitter posting logic should execute regardless of dev mode
     if (config.twitter.settings.devMode) {
       console.log('Development mode is enabled. Skipping Twitter posts.');
       if (tradeResult && tradeResult.success) {
@@ -417,25 +420,21 @@ export async function postToTwitter(tweetData, client) {
     if (
       tweetData.tweet && 
       createdTweet.id && 
-      tweetData.comment && 
-      tweetData.agetnAnalysisComment && 
-      tweetData.agentTweetPost && 
-      tweetData.agentComment && 
-      tweetData.agetnHashtagsComment &&
-      tweetData.agentInvestmentComment && 
-      tweetData.agentInvestmentDecisionComment && 
-      formatedTokenData 
+      tweetData.comment
     ) {
       await saveTweetData(
-        createdTweet.id, 
-        new Date().toISOString(), 
-        tweetData.tweet, 
-        tweetData.comment, 
-        tweetData.hashtagsComment, 
-        tweetData.analystResponse, 
-        tweetData.investmentComment, 
-        tweetData.investmentDecisionComment, 
-        formatedTokenData 
+        createdTweet.id,                              // tweetId
+        new Date().toISOString(),                     // date
+        tweetData.tweet,                              // tweet
+        tweetData.comment,                            // comment
+        tweetData.agetnHashtagsComment,               // hashtagsComment
+        tweetData.agetnAnalysisComment,               // analysisComment
+        tweetData.agentTweetPost,                     // tweetPost
+        tweetData.agentComment,                       // agentComment
+        tweetData.agetnHashtagsComment,               // hashtagsContent
+        tweetData.agentInvestmentComment,             // investmentComment
+        tweetData.agentInvestmentDecisionComment,     // investmentDecision
+        JSON.stringify(tweetData.tokenData, null, 2)  // tokenData
       );
     }
 

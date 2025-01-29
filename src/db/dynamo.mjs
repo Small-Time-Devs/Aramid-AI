@@ -38,22 +38,39 @@ const docClient = DynamoDBDocumentClient.from(client, {
   },
 });
 
-export async function saveTweetData(tweetId, date, tweet, comment, hashtags, analysisResponse, investmentComment, investmentDecisionComment, tweetData ) {
+export async function saveTweetData(
+  tweetId, 
+  date, 
+  tweet, 
+  comment, 
+  hashtagsComment,
+  analysisComment,
+  tweetPost,
+  agentComment,
+  hashtagsContent,
+  investmentComment,
+  investmentDecision,
+  tokenData
+) {
     const tableName = 'AramidAI-X-Past-Tweets';
-
+  
     try {
       const putParams = {
         TableName: tableName,
         Item: {
           TweetID: tweetId,      // Primary key
           Date: date,            // ISO format date string
-          Tweet: tweet,          // Main tweet content
-          Comment: comment,      // Reply comment
-          Hashtags: hashtags,    // Hashtags as a string
-          AnaylsisResponse: analysisResponse,   // Analysis response
-          InvestmentComment: investmentComment,  // Investment comment
-          InvestmentDecisionComment: investmentDecisionComment,  // Investment decision comment
-          TweetData: tweetData,  // Additional tweet data
+          Tweet: tweet,          // Combined tweet content
+          Comment: comment,      // Combined comment
+          // Individual agent responses
+          AgentAnalysisComment: analysisComment,
+          AgentTweetPost: tweetPost,
+          AgentCommentPost: agentComment,
+          AgentHashtagsComment: hashtagsContent,
+          AgentInvestmentComment: investmentComment,
+          AgentInvestmentDecision: investmentDecision,
+          TokenData: tokenData,  // Token data
+          Timestamp: new Date().toISOString()
         }
       };
   
@@ -65,7 +82,7 @@ export async function saveTweetData(tweetId, date, tweet, comment, hashtags, ana
       console.error('Error saving tweet data:', JSON.stringify(error, null, 2));
       throw error;
     }
-  }
+}
 
 // Store trade information in DynamoDB
 export async function storeTradeInfo(data) {

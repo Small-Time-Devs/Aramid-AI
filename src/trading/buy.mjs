@@ -33,7 +33,7 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss) {
       amount: config.cryptoGlobals.investmentAmountInSol, // Default investment amount in SOL
       referralPublicKey: config.cryptoGlobals.referralPublicKey,
       priorityFee: config.cryptoGlobals.priorityFee, // Default priority fee
-      slippage: config.cryptoGlobals.slippage, // 5% slippage
+      slippage: config.cryptoGlobals.buySlippage, // 5% slippage
       useJito: config.cryptoGlobals.useJito,
     };
 

@@ -27,7 +27,7 @@ export async function executeTradeSell(trade, currentPrice) {
       amount: sellAmount, // Add the amount to sell
       referralPublicKey: config.cryptoGlobals.referralPublicKey,
       priorityFee: config.cryptoGlobals.priorityFee,
-      slippage: config.cryptoGlobals.slippage,
+      slippage: config.cryptoGlobals.sellSlippage,
       useJito: config.cryptoGlobals.useJito
     };
 
