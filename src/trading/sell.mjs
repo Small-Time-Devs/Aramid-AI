@@ -25,10 +25,10 @@ export async function executeTradeSell(trade, currentPrice) {
       public_key: walletDetails.solPublicKey,
       mint: trade.tokenAddress,
       amount: sellAmount, // Add the amount to sell
-      referralPublicKey: 'G479Un81UEDZEeHPv23Uy9n2qqgy1CzT7muJVj7PUHJF',
-      priorityFee: 150000,
-      slippage: 500,
-      useJito: false
+      referralPublicKey: config.cryptoGlobals.referralPublicKey,
+      priorityFee: config.cryptoGlobals.priorityFee,
+      slippage: config.cryptoGlobals.slippage,
+      useJito: config.cryptoGlobals.useJito
     };
 
     console.log('Executing sell with parameters:', {

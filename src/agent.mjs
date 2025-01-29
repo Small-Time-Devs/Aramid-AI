@@ -349,7 +349,9 @@ export async function postToTwitter(tweetData, client) {
     // Trading logic should execute regardless of dev mode
     if (tweetData.agentInvestmentDecisionComment && 
         (tweetData.agentInvestmentDecisionComment.startsWith("Invest") || 
-         tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit"))) {
+         tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit") ||
+         tweetData.agentInvestmentDecisionComment.startsWith("Degen")
+        )) {
       
       let targetGain, targetLoss;
       

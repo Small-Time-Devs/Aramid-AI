@@ -2,6 +2,7 @@ import axios from 'axios';
 import { getWalletDetails, storeTradeInfo } from '../db/dynamo.mjs';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { startPriceMonitoring } from './pnl.mjs';
+import { config } from '../config/config.mjs';
 
 export async function executeTradeBuy(tweetData, targetGain, targetLoss) {
   console.log('Starting buy execution with parameters:', {
@@ -29,11 +30,11 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss) {
       private_key: decryptedPrivateKey, // Using decrypted private key
       public_key: walletDetails.solPublicKey,
       mint: tweetData.tokenData.tokenAddress,
-      amount: 0.01, // Default investment amount in SOL
-      referralPublicKey: 'G479Un81UEDZEeHPv23Uy9n2qqgy1CzT7muJVj7PUHJF',
-      priorityFee: 150000, // Default priority fee
-      slippage: 500, // 5% slippage
-      useJito: false
+      amount: config.cryptoGlobals.investmentAmountInSol, // Default investment amount in SOL
+      referralPublicKey: config.cryptoGlobals.referralPublicKey,
+      priorityFee: config.cryptoGlobals.priorityFee, // Default priority fee
+      slippage: config.cryptoGlobals.slippage, // 5% slippage
+      useJito: config.cryptoGlobals.useJito,
     };
 
     // Execute buy order
