@@ -17,7 +17,7 @@ export const config = {
             xAutoResponder: false,
             postsPerDay: 100,
             postsPerMonth: 3000,
-            timeToReadPostsOnPage: 2,
+            timeToReadPostsOnPage: 2,            
         },
         influencers: {
             twitterHandles: [
@@ -36,6 +36,8 @@ export const config = {
 
     cryptoGlobals: {
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
+        publicKey: process.env.SOL_PUBLIC_KEY,
+        rpcNode: process.env.HELIUS_RPC_NODE
     },
 
     // Add API sections and their respective APIs

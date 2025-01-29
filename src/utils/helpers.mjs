@@ -1,5 +1,5 @@
 import { TwitterApi } from 'twitter-api-v2';
-import { fetchLatestTokenProfiles, fetchTokenNameAndSymbol, fetchTokenPrice, fetchTokenPairs, fetchTokenOrders, fetchPoolInfo } from './apiUtils.mjs';
+import { fetchLatestTokenProfiles, fetchTokenNameAndSymbol, fetchTokenPrice, fetchTokenPairs, fetchTokenOrders, fetchPoolInfo, checkTokenAuthority } from './apiUtils.mjs';
 import { config } from '../config/config.mjs';
 
 let rateLimitRemaining = null;
@@ -132,6 +132,11 @@ export async function fetchTokenData() {
 
     return result;
       */
+      const checkIfSafe = await checkTokenAuthority(tokenAddress);
+      if (config.twitter.settings.devMode) {
+        console.log('Check if token is safe:', checkIfSafe); 
+      }
+ 
 
       const tokenName = tokenPairInfo.tokenName;
       const tokenSymbol = tokenPairInfo.tokenSymbol;
@@ -148,6 +153,9 @@ export async function fetchTokenData() {
       const tokenFDV = tokenPairInfo.fdv;
       const tokenMarketCap = tokenPairInfo.marketCap;
       const unixTimeCreated = tokenPairInfo.timeCreated;
+      const tokenSafe = checkIfSafe.safe;
+      const tokenFreezeAuthority = checkIfSafe.freezeAuthority;
+      const tokenMintAuthority = checkIfSafe.mintAuthority;
 
       // Convert Unix timestamp to human-readable date
       const dateCreated = new Date(unixTimeCreated * 1000).toUTCString();
@@ -207,5 +215,30 @@ export async function fetchTokenData() {
   } catch (error) {
     console.error(`Error processing token data from dexscreener, going to try fetching again`, error);
     await fetchTokenData();
+  }
+}
+
+export async function getUserIdByUsername(username) {
+  const client = new TwitterApi({
+    appKey: `${config.twitter.keys.appKey}`,
+    appSecret: `${config.twitter.keys.appSecret}`,
+    accessToken: `${config.twitter.keys.accessToken}`,
+    accessSecret: `${config.twitter.keys.accessSecret}`,
+  });
+
+  try {
+    // Fetch the user by username
+    const user = await client.v2.userByUsername(username);
+
+    if (user && user.data && user.data.id) {
+      console.log(`User ID for @${username}:`, user.data.id);
+      return user.data.id;
+    } else {
+      console.log(`No user found with username: @${username}`);
+      return null;
+    }
+  } catch (error) {
+    console.error("Error fetching user ID:", error);
+    return null;
   }
 }

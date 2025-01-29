@@ -3,6 +3,11 @@ import dotenv from "dotenv";
 import { TwitterApi } from "twitter-api-v2";
 import { checkRateLimit, updateRateLimitInfo, fetchWithTimeout, fetchTokenData } from "./utils/helpers.mjs";
 import axios from 'axios';
+import { saveTweetData } from './db/dynamo.mjs';
+import { decryptPrivateKey } from './encryption/encryption.mjs';
+import { storeTradeInfo } from './db/dynamo.mjs';
+import { startPriceMonitoring } from './trading/pnl.mjs';
+import { executeTradeBuy } from './trading/buy.mjs';
 
 dotenv.config();
 const url = 'https://api.smalltimedevs.com/ai/hive-engine'
@@ -52,8 +57,8 @@ export async function generateAutoPostTweet() {
         console.log('Development mode is enabled. Not posting to twitter. Generated tweet data:', tweetData);
       }
   
-      while (!tweetData || !tweetData.tweet || !tweetData.comment || !tweetData.hashtagsComment) {
-        console.log("Generated tweet is null or incomplete, retrying...");
+      while (!tweetData || !tweetData.tweet || !tweetData.comment) {
+        console.log("Generated tweet is missing the tweet post or the comment post, retrying...");
         tweetData = await handleQuestion();
       }
       //console.log("Generated Tweet:", tweetData);
@@ -139,10 +144,28 @@ export async function handleQuestion() {
         throw new Error("Invalid agent responses received from API.");
     }
 
-    const tweetAgent = agentResponses[1];
-    const commentAgent = agentResponses[2];
-    const hashtagsAgent = agentResponses[3];
+    const anaylstAgent = agentResponses[0];
+    const analystResponse = anaylstAgent.response;
+    const investmentAgent = agentResponses[1];
+    const investmentReponse = investmentAgent.response;
+    const investmentDecision = investmentAgent.decision;
+    const tweetAgent = agentResponses[2];
+    const commentAgent = agentResponses[3];
+    const hashtagsAgent = agentResponses[4];
 
+    if (config.twitter.settings.devMode) {
+      console.log("Analyst Response:", analystResponse);
+      console.log("Tweet Agent Response:", tweetAgent.response);
+      console.log("Comment Agent Response:", commentAgent.response);
+      console.log("Hashtags Agent Response:", hashtagsAgent.response);
+      console.log("Investment Response:", investmentReponse);
+      console.log("Investment Decision:", investmentDecision);
+    }
+
+    if (!analystResponse) {
+      console.error("Invalid analyst response, generating again.");
+      await handleQuestion();
+    }
     if (!tweetAgent || !tweetAgent.name || !tweetAgent.response) {
         console.error("Invalid tweet agent response, generating again.");
         await handleQuestion();
@@ -155,14 +178,36 @@ export async function handleQuestion() {
         console.error("Invalid hashtags agent response, generating again.");
         await handleQuestion();
     }
+    if (!investmentAgent || !investmentAgent.response || !investmentAgent.decision) {
+        console.error("Invalid investment agent response, generating again.");
+        await handleQuestion();
+    }
 
-    //const influencers = config.twitter.influencers.twitterHandles;
-    //const randomInfluencer = influencers[Math.floor(Math.random() * influencers.length)];
+    let tweet = `
+    ${tweetAgent.name}: 
+    ${tweetAgent.response}\n\n 
+    
+    ${commentAgent.name}:
+    ${commentAgent.response}\n\n
 
-    let tweet = `${tweetAgent.name}:\n${tweetAgent.response}`;
-    let comment = `${commentAgent.name}:\n${commentAgent.response}`;
-    let hashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
+    ${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
 
+    let comment = `
+    ${anaylstAgent.name}:
+    ${anaylstAgent.response}\n\n
+    
+    ${investmentAgent.name}:
+    ${investmentAgent.response}\n
+    ${investmentAgent.decision}`;
+    
+    let agetnAnalysisComment = `${anaylstAgent.name}:\n${anaylstAgent.response}`;
+    let agentTweetPost = `${tweetAgent.name}:\n${tweetAgent.response}`;
+    let agentComment = `${commentAgent.name}:\n${commentAgent.response}`;
+    let agetnHashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
+    let agentInvestmentComment = `${investmentAgent.name}:\n${investmentAgent.response}`;
+    let agentInvestmentDecisionComment = `${investmentAgent.decision}`;
+
+    /*
     if (tweet.length > 280) {
         tweet = tweet.substring(0, 277) + '...';
     }
@@ -172,12 +217,18 @@ export async function handleQuestion() {
     if (hashtagsComment.length > 280) {
         hashtagsComment = hashtagsComment.substring(0, 277) + '...';
     }
+    */
 
     const tweetData = {
         tweet,
         comment,
-        hashtagsComment,
-        //...tokenData,
+        agetnAnalysisComment,
+        agentTweetPost,
+        agentComment,
+        agetnHashtagsComment,
+        agentInvestmentComment,
+        agentInvestmentDecisionComment,
+        tokenData,
     };
 
     if (config.twitter.settings.devMode) {
@@ -270,10 +321,71 @@ async function generatePrompt(tokenData) {
 }
 
 export async function postToTwitter(tweetData, client) {
+          /*
+        tweet,
+        comment,
+
+        agetnAnalysisComment,
+        agentTweetPost,
+        agentComment,
+        agetnHashtagsComment,
+        agentInvestmentComment,
+        agentInvestmentDecisionComment,
+        tokenData,
+
+        */
   try {
+    console.log('Starting postToTwitter function with trade data:', {
+      investmentDecision: tweetData.agentInvestmentDecisionComment,
+      tokenDetails: {
+        name: tweetData.tokenData.tokenName,
+        address: tweetData.tokenData.tokenAddress,
+        priceSOL: tweetData.tokenData.tokenPriceInSol
+      }
+    });
+
+    let tradeResult = null; // Initialize tradeResult
+
+    // Trading logic should execute regardless of dev mode
+    if (tweetData.agentInvestmentDecisionComment && 
+        (tweetData.agentInvestmentDecisionComment.startsWith("Invest") || 
+         tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit"))) {
+      
+      let targetGain, targetLoss;
+      
+      if (tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit")) {
+        const gainMatch = tweetData.agentInvestmentDecisionComment.match(/Gain \+(\d+)%/);
+        const lossMatch = tweetData.agentInvestmentDecisionComment.match(/Loss -(\d+)%/);
+        
+        targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
+        targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
+
+        console.log('Extracted trade parameters:', { targetGain, targetLoss });
+        
+        // Execute trade and wait for result
+        tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss);
+        console.log('Trade execution result:', tradeResult);
+        
+        if (!tradeResult.success) {
+          console.error('Trade execution failed:', tradeResult.error);
+        } else {
+          console.log('Trade executed successfully. Trade ID:', tradeResult.tradeId);
+        }
+      }
+
+      if (tradeResult && tradeResult.success && tradeResult.txId) {
+        const tradeComment = `I put my money where my agent's mouth is! Check out the trade: https://solscan.io/tx/${tradeResult.txId} 🚀`;
+        tweetData.comment = tweetData.comment + '\n' + tradeComment;
+      }
+    }
+
+    // Twitter posting logic
     if (config.twitter.settings.devMode) {
-      console.log('Development mode is enabled. Not posting to twitter. Generated tweet data:', tweetData);
-      return tweetData;
+      console.log('Development mode is enabled. Skipping Twitter posts.');
+      if (tradeResult && tradeResult.success) {
+        console.log('Trade comment that would be posted:', tweetData.comment);
+      }
+      return;
     }
 
     const canPost = await checkRateLimit(client);
@@ -282,27 +394,47 @@ export async function postToTwitter(tweetData, client) {
       return;
     }
 
-    const formattedTweet = tweetData.tweet.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-
-    const { data: createdTweet, headers } = await client.v2.tweet(formattedTweet);
-    console.log('Tweet headers:', headers); // Log headers for debugging
+    //const formattedTweet = tweetData.tweet.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
+    //const { data: createdTweet, headers } = await client.v2.tweet(formattedTweet);
+    const { data: createdTweet, headers } = await client.v2.tweet(tweetData.tweet);
     updateRateLimitInfo(headers);
     console.log('Tweet posted successfully:', createdTweet);
 
     if (tweetData.comment) {
-      const formattedComment = tweetData.comment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-      const { headers: commentHeaders } = await client.v2.reply(formattedComment, createdTweet.id);
-      console.log('Comment headers:', commentHeaders); // Log headers for debugging
+      //const formattedComment = tweetData.comment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
+      //const { headers: commentHeaders } = await client.v2.reply(formattedComment, createdTweet.id);
+      const { headers: commentHeaders } = await client.v2.reply(tweetData.comment, createdTweet.id);
       updateRateLimitInfo(commentHeaders);
-      console.log('Comment posted successfully:', formattedComment);
+      console.log('Comment posted successfully:', tweetData.comment);
     }
-
-    if (tweetData.hashtagsComment) {
-      const formattedHashtagsComment = tweetData.hashtagsComment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-      const { headers: hashtagsHeaders } = await client.v2.reply(formattedHashtagsComment, createdTweet.id);
-      console.log('Hashtags headers:', hashtagsHeaders); // Log headers for debugging
-      updateRateLimitInfo(hashtagsHeaders);
-      console.log('Hashtags comment posted successfully:', formattedHashtagsComment);
+       
+    // Formated Token Data
+    const formatedTokenData = JSON.stringify(tweetData.tokenData, null, 2);
+    // 
+    // Save tweet data to DynamoDB
+    if (
+      tweetData.tweet && 
+      createdTweet.id && 
+      tweetData.comment && 
+      tweetData.agetnAnalysisComment && 
+      tweetData.agentTweetPost && 
+      tweetData.agentComment && 
+      tweetData.agetnHashtagsComment &&
+      tweetData.agentInvestmentComment && 
+      tweetData.agentInvestmentDecisionComment && 
+      formatedTokenData 
+    ) {
+      await saveTweetData(
+        createdTweet.id, 
+        new Date().toISOString(), 
+        tweetData.tweet, 
+        tweetData.comment, 
+        tweetData.hashtagsComment, 
+        tweetData.analystResponse, 
+        tweetData.investmentComment, 
+        tweetData.investmentDecisionComment, 
+        formatedTokenData 
+      );
     }
 
     return createdTweet;
@@ -323,7 +455,7 @@ export async function postToTwitter(tweetData, client) {
   }
 }
 
-export async function scanAndRespondToPosts() {
+export async function scanAndRespondToOtherUserTweets(targetUserId) {
   const client = new TwitterApi({
     appKey: `${config.twitter.keys.appKey}`,
     appSecret: `${config.twitter.keys.appSecret}`,
@@ -332,11 +464,21 @@ export async function scanAndRespondToPosts() {
   });
 
   try {
-    const { data } = await client.v2.userTimeline(config.twitter.twitterUserID, { max_results: 5 }); // Set max_results to a valid value
+    // Fetch the latest tweets from the target user's timeline
+    const { data } = await client.v2.userTimeline(targetUserId, { max_results: 5 });
     const tweets = data.data;
+
+    if (!tweets || tweets.length === 0) {
+      console.log('No tweets found for the specified user.');
+      return;
+    }
+
     for (const tweet of tweets) {
       if (tweet.in_reply_to_user_id === null) {
+        // Send tweet text to OpenAI and generate a response
         const response = await generateResponseToTweet(tweet.text);
+
+        // Post the response as a reply to the original tweet
         await client.v2.reply(response, tweet.id);
         console.log('Replied to tweet:', tweet.id);
       }

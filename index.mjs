@@ -2,7 +2,19 @@ import * as twitterProfessional from "./src/agent.mjs";
 import { config } from './src/config/config.mjs';
 import { checkRateLimit } from './src/utils/helpers.mjs';
 import { TwitterApi } from "twitter-api-v2";
+import { initializeTradeMonitoring } from './src/trading/pnl.mjs';
 
+async function startBot() {
+  try {
+    // Initialize trade monitoring for any existing active trades
+    await initializeTradeMonitoring();
+    
+    // Rest of your bot initialization code
+    autoPostToTwitter();
+  } catch (error) {
+    console.error('Error starting bot:', error);
+  }
+}
 
 function autoPostToTwitter() {
   if (!config.twitter.settings.xAutoPoster) return;
@@ -31,12 +43,25 @@ function autoPostToTwitter() {
 
         // step 1 call the generateAutoPostTweet function from the twitterProfessional module
         const tweet = await twitterProfessional.generateAutoPostTweet();
+
+        /*
+        tweet,
+        comment,
+
+        agetnAnalysisComment,
+        agentTweetPost,
+        agentComment,
+        agetnHashtagsComment,
+        agentInvestmentComment,
+        agentInvestmentDecisionComment,
+        tokenData,
+
+        */
         if (config.twitter.settings.devMode) {
           console.log(`Dev mode enabled, 
             Tweet to be sent!. ${tweet.tweet}
-            Comment: ${tweet.comment}
-            Hashtags: ${tweet.hashtagsComment}`);
-          return;
+            Comment to be sent!: ${tweet.comment}
+            `);
         }
 
         if (tweet === undefined) {
@@ -65,4 +90,4 @@ function scanAndRespondToTwitterPosts() {
   }, interval);
 }
 
-autoPostToTwitter();
+startBot();
