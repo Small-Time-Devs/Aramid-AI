@@ -13,54 +13,80 @@ export async function executeTradeSell(trade, currentPrice) {
       throw new Error('Wallet details not found or private key missing');
     }
 
-    // Decrypt the private key before using it
-    const decryptedPrivateKey = decryptPrivateKey(walletDetails.solPrivateKey);
-    console.log('Private key decrypted successfully');
-
     // Calculate sell amount (slightly less than total to ensure success)
     const sellAmount = Math.max(0, trade.tokensReceived - 0.001);
     
+    // Log the token balance before attempting sell
+    console.log('Attempting to sell:', {
+      tokenAddress: trade.tokenAddress,
+      amount: sellAmount,
+      currentPrice,
+      tradeType: trade.tradeType
+    });
+
     const sellRequest = {
-      private_key: decryptedPrivateKey, // Using decrypted private key
+      private_key: decryptPrivateKey(walletDetails.solPrivateKey),
       public_key: walletDetails.solPublicKey,
       mint: trade.tokenAddress,
-      amount: sellAmount, // Add the amount to sell
+      amount: sellAmount,
       referralPublicKey: config.cryptoGlobals.referralPublicKey,
       priorityFee: config.cryptoGlobals.priorityFee,
       slippage: config.cryptoGlobals.sellSlippage,
       useJito: config.cryptoGlobals.useJito
     };
 
-    console.log('Executing sell with parameters:', {
-      mint: trade.tokenAddress,
-      amount: sellAmount,
-      currentPrice
-    });
+    try {
+      const sellResponse = await axios.post(
+        'https://api.smalltimedevs.com/solana/raydium-api/aramidSell', 
+        sellRequest,
+        { timeout: 30000 } // Add 30s timeout
+      );
 
-    const sellResponse = await axios.post('https://api.smalltimedevs.com/solana/raydium-api/aramidSell', sellRequest);
-
-    if (sellResponse.data.success) {
-      const priceChangePercent = ((currentPrice - trade.entryPriceSOL) / trade.entryPriceSOL) * 100;
-      
-      // Get current token data for USD price
-      const tokenData = await fetchTokenPairs('solana', trade.tokenAddress);
-      if (!tokenData) {
-        throw new Error('Failed to fetch token price data');
-      }
-
-      await updateTradeWithSellInfo(trade.tradeId, {
-        exitPriceSOL: currentPrice,
-        exitPriceUSD: tokenData.priceUsd, // Use price from fetchTokenPairs
-        sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : 0,
-        sellPercentageLoss: priceChangePercent < 0 ? Math.abs(priceChangePercent) : 0
+      // Log successful response
+      console.log('Sell response:', {
+        success: sellResponse.data.success,
+        txId: sellResponse.data.txid,
       });
 
-      return { success: true, priceChangePercent };
-    }
+      if (sellResponse.data.success) {
+        const priceChangePercent = ((currentPrice - trade.entryPriceSOL) / trade.entryPriceSOL) * 100;
+        
+        // Get current token data for USD price
+        const tokenData = await fetchTokenPairs('solana', trade.tokenAddress);
+        if (!tokenData) {
+          throw new Error('Failed to fetch token price data');
+        }
 
-    return { success: false, error: 'Sell order failed' };
+        await updateTradeWithSellInfo(trade.tradeId, {
+          exitPriceSOL: currentPrice,
+          exitPriceUSD: tokenData.priceUsd, // Use price from fetchTokenPairs
+          sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : 0,
+          sellPercentageLoss: priceChangePercent < 0 ? Math.abs(priceChangePercent) : 0
+        });
+
+        return { success: true, priceChangePercent };
+      }
+
+      return { success: false, error: 'Sell order failed' };
+    } catch (apiError) {
+      // Detailed API error logging
+      console.error('Sell API error:', {
+        status: apiError.response?.status,
+        statusText: apiError.response?.statusText,
+        data: apiError.response?.data,
+        error: apiError.message
+      });
+      throw new Error(`Sell API error: ${apiError.message}`);
+    }
   } catch (error) {
-    console.error('Error executing sell:', error);
+    console.error('Error executing sell:', {
+      error: error.message,
+      stack: error.stack,
+      trade: {
+        id: trade.tradeId,
+        token: trade.tokenAddress
+      }
+    });
     return { success: false, error: error.message };
   }
 }

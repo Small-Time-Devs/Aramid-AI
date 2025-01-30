@@ -1,23 +1,29 @@
 import * as twitterProfessional from "./src/agent.mjs";
+import * as autoTraderAgent from "./src/agents/autoTrader.mjs";
 import { config } from './src/config/config.mjs';
 import { checkRateLimit } from './src/utils/helpers.mjs';
 import { TwitterApi } from "twitter-api-v2";
 import { initializeTradeMonitoring } from './src/trading/pnl.mjs';
+import { getActiveTrades } from './src/db/dynamo.mjs';
 
-async function startBot() {
+async function startAI() {
   try {
     // Initialize trade monitoring for any existing active trades
     await initializeTradeMonitoring();
     
-    // Rest of your bot initialization code
+    // Start both auto-posting and auto-trading
     autoPostToTwitter();
+    autoTrader();
   } catch (error) {
     console.error('Error starting bot:', error);
   }
 }
 
 function autoPostToTwitter() {
-  if (!config.twitter.settings.xAutoPoster) return;
+  if (!config.twitter.settings.xAutoPoster) {
+    console.log('Auto-posting is disabled in config.');
+    return;
+  }
 
   const maxPostsPerMonth = config.twitter.settings.postsPerMonth;
   const postsPerDay = config.twitter.settings.postsPerDay;
@@ -76,6 +82,48 @@ function autoPostToTwitter() {
   }
 }
 
+async function autoTrader() {
+  if (!config.cryptoGlobals.tradeTokensInBackground) {
+    console.log('Background trading is disabled in config.');
+    return;
+  }
+
+  console.log(`Starting auto trader with interval of ${config.cryptoGlobals.tradeTokensInBackgroundInterval}ms`);
+  console.log(`Maximum concurrent trades allowed: ${config.cryptoGlobals.maxOpenTrades}`);
+
+  setInterval(async () => {
+    try {
+      // Check current active trades
+      const activeTrades = await getActiveTrades();
+      if (activeTrades.length >= config.cryptoGlobals.maxOpenTrades) {
+        console.log(`Skipping trade check - At maximum open trades (${activeTrades.length}/${config.cryptoGlobals.maxOpenTrades})`);
+        return;
+      }
+
+      console.log(`Current active trades: ${activeTrades.length}/${config.cryptoGlobals.maxOpenTrades}`);
+      console.log('Auto trader checking for new opportunities...');
+      
+      const investmentChoice = await autoTraderAgent.generateTradeAnswer();
+
+      if (!investmentChoice) {
+        console.log('No valid investment opportunities found this round.');
+        return;
+      }
+
+      if (config.cryptoGlobals.tradeTokenDevMode) {
+        console.log('Trade dev mode enabled:', {
+          investmentComment: investmentChoice.agentInvestmentComment,
+          investmentDecision: investmentChoice.agentInvestmentDecisionComment
+        });
+      }
+
+      await autoTraderAgent.executeTrade(investmentChoice);
+    } catch (error) {
+      console.error("Error in auto trader:", error);
+    }
+  }, config.cryptoGlobals.tradeTokensInBackgroundInterval);
+}
+
 function scanAndRespondToTwitterPosts() {
   if (!config.twitter.settings.xAutoResponder) return; // Ensure the function respects the xAutoResponder flag
 
@@ -90,4 +138,4 @@ function scanAndRespondToTwitterPosts() {
   }, interval);
 }
 
-startBot();
+startAI();

@@ -177,3 +177,57 @@ export async function checkTokenAuthority(mintAddress) {
     throw error;
   }
 }
+
+export async function fetchMeteoraPoolInfo() {
+  try {
+    const response = await axios.get('https://dlmm-api.meteora.ag/pair/all_with_pagination?limit=200&order_by=desc&hide_low_tvl=300000');
+    
+    if (!response.data || !response.data.pairs) {
+      throw new Error('Invalid response from Meteora API');
+    }
+
+    return response.data.pairs.map(pair => ({
+      poolAddress: pair.address,
+      poolName: pair.name,
+      tokenXMint: pair.mint_x,
+      tokenYMint: pair.mint_y,
+      tokenXReserveAddress: pair.reserve_x,
+      tokenYReserveAddress: pair.reserve_y,
+      tokenXReserveAmount: pair.reserve_x_amount,
+      tokenYReserveAmount: pair.reserve_y_amount,
+      binStep: pair.bin_step,
+      baseFeePercent: pair.base_fee_percentage,
+      maxFeePercent: pair.max_fee_percentage,
+      protocolFeePercent: pair.protocol_fee_percentage,
+      liquidity: pair.liquidity,
+      rewardTokenXMint: pair.reward_mint_x,
+      rewardTokenYMint: pair.reward_mint_y,
+      fees24h: pair.fees_24h,
+      todayFees: pair.today_fees,
+      volume24h: pair.trade_volume_24h, 
+      cumulativeVolume: pair.cumulative_trade_volume,
+      cumulativeFees: pair.cumulative_fee_volume,
+      currentPrice: pair.current_price,
+      apr: pair.apr,
+      apy: pair.apy,
+      farmApr: pair.farm_apr,
+      farmApy: pair.farm_apy,
+      isHidden: pair.hide
+    }));
+
+  } catch (error) {
+    console.error('Error fetching Meteora pool info:', error);
+    throw new Error('Failed to fetch Meteora pool information');
+  }
+}
+
+// Add helper function to get specific pool info
+export async function getMeteoraPoolByAddress(poolAddress) {
+  try {
+    const pools = await fetchMeteoraPoolInfo();
+    return pools.find(pool => pool.poolAddress === poolAddress);
+  } catch (error) {
+    console.error(`Error getting Meteora pool ${poolAddress}:`, error);
+    throw error;
+  }
+}

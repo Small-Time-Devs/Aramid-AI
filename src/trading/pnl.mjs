@@ -51,7 +51,7 @@ export async function startPriceMonitoring(tradeId) {
       const currentPrice = tokenData.priceNative;
       const priceChangePercent = calculatePriceChange(currentPrice, trade.entryPriceSOL);
 
-      if (config.twitter.settings.devMode) {
+      if (config.twitter.settings.devMode || config.cryptoGlobals.debugMode) {
         console.log(`[${new Date().toISOString()}] Monitoring trade ${tradeId}:`, {
             currentPrice,
             entryPrice: trade.entryPriceSOL,
@@ -105,6 +105,23 @@ function calculatePriceChange(currentPrice, entryPrice) {
 }
 
 function shouldSell(priceChangePercent, trade) {
+  const currentTime = new Date().getTime();
+  const tradeTime = new Date(trade.timestamp).getTime();
+  const timeElapsedMinutes = (currentTime - tradeTime) / (1000 * 60);
+  const timeElapsedDays = timeElapsedMinutes / (60 * 24);
+
+  // Check trade type and corresponding time limits
+  if (trade.tradeType === 'INVEST' && timeElapsedDays >= config.cryptoGlobals.investHoldingTimePeriodDays) {
+    console.log(`Selling INVEST trade due to exceeding time limit of ${config.cryptoGlobals.investHoldingTimePeriodDays} days`);
+    return true;
+  }
+
+  if (trade.tradeType === 'QUICK_PROFIT' && timeElapsedMinutes >= config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes) {
+    console.log(`Selling QUICK_PROFIT trade due to exceeding time limit of ${config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes} minutes`);
+    return true;
+  }
+
+  // Check profit/loss targets if time limit hasn't been reached
   return priceChangePercent >= trade.targetPercentageGain || 
          priceChangePercent <= -trade.targetPercentageLoss;
 }

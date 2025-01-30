@@ -35,17 +35,23 @@ export const config = {
     },
 
     cryptoGlobals: {
+        tradeTokenDevMode: false,
         tradeTokens: true,
-        tradeTokensInBackground: true, // WIP not implemented yet
+        tradeTokensInBackground: true,
+        tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
+        maxOpenTrades: 4,
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
-        investmentAmountInSol: 0.1,
+        investmentAmountInSol: 0.05,
         buySlippage: 500, // 5% slippage
         sellSlippage: 1500, // 15% slippage
-        priorityFee: 150000, // Default priority fee
+        priorityFee: 200000, // Default priority fee
         referralPublicKey: 'G479Un81UEDZEeHPv23Uy9n2qqgy1CzT7muJVj7PUHJF',
         useJito: false,
+        investHoldingTimePeriodDays: 3,
+        quickProfitHoldingTimePeriodMinutes: 30,
+        degenProfitHoldingTimePeriodMinutes: 60,
     },
 
     // Add API sections and their respective APIs

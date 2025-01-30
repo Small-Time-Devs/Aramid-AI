@@ -104,6 +104,7 @@ export async function storeTradeInfo(data) {
         sellPercentageLoss: data.sellPercentageLoss || null,
         status: 'ACTIVE',
         tokensReceived: data.tokensReceived, // Add new field for tokens received
+        tradeType: data.tradeType, // Add trade type (INVEST, QUICK_PROFIT, or DEGEN)
         timestamp: new Date().toISOString()
       }
     };
@@ -216,6 +217,51 @@ export async function getWalletDetails() {
     };
   } catch (error) {
     console.error('Error getting wallet details:', error);
+    throw error;
+  }
+}
+
+export async function findActiveTradeByToken(tokenAddress) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      FilterExpression: '#status = :status AND tokenAddress = :tokenAddress',
+      ExpressionAttributeNames: {
+        '#status': 'status'
+      },
+      ExpressionAttributeValues: {
+        ':status': 'ACTIVE',
+        ':tokenAddress': tokenAddress
+      }
+    };
+
+    const command = new ScanCommand(params);
+    const response = await docClient.send(command);
+    return response.Items?.[0] || null;
+  } catch (error) {
+    console.error('Error finding active trade by token:', error);
+    throw error;
+  }
+}
+
+export async function updateTradeAmounts(tradeId, additionalAmount, additionalTokens) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      Key: { tradeId },
+      UpdateExpression: 'SET amountInvested = amountInvested + :amount, tokensReceived = tokensReceived + :tokens',
+      ExpressionAttributeValues: {
+        ':amount': additionalAmount,
+        ':tokens': additionalTokens
+      },
+      ReturnValues: 'ALL_NEW'
+    };
+
+    const command = new UpdateCommand(params);
+    const response = await docClient.send(command);
+    return response.Attributes;
+  } catch (error) {
+    console.error('Error updating trade amounts:', error);
     throw error;
   }
 }

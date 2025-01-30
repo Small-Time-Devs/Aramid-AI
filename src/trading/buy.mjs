@@ -1,16 +1,111 @@
 import axios from 'axios';
-import { getWalletDetails, storeTradeInfo } from '../db/dynamo.mjs';
+import { getWalletDetails, storeTradeInfo, findActiveTradeByToken, updateTradeAmounts } from '../db/dynamo.mjs';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { startPriceMonitoring } from './pnl.mjs';
 import { config } from '../config/config.mjs';
 
-export async function executeTradeBuy(tweetData, targetGain, targetLoss) {
+export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeType) {
+  try {
+    // Check for existing active trade with same token
+    const existingTrade = await findActiveTradeByToken(tweetData.tokenData.tokenAddress);
+    
+    if (existingTrade) {
+      console.log('Found existing active trade for token:', {
+        tradeId: existingTrade.tradeId,
+        token: existingTrade.tokenName,
+        currentAmount: existingTrade.amountInvested
+      });
+
+      // Execute new buy order with tweet data
+      const buyResult = await executeBuyOrder(tweetData, targetGain, targetLoss, tradeType);
+      if (!buyResult.success) {
+        return buyResult;
+      }
+
+      // Update existing trade with additional amounts
+      const updatedTrade = await updateTradeAmounts(
+        existingTrade.tradeId, 
+        buyResult.amountInvested,
+        buyResult.tokensReceived
+      );
+
+      console.log('Updated existing trade:', {
+        tradeId: existingTrade.tradeId,
+        newTotalAmount: updatedTrade.amountInvested,
+        newTotalTokens: updatedTrade.tokensReceived
+      });
+
+      return {
+        success: true,
+        tradeId: existingTrade.tradeId,
+        txId: buyResult.txId,
+        isUpdate: true
+      };
+    }
+
+    // No existing trade found, proceed with new trade
+    return await executeBuyOrder(tweetData, targetGain, targetLoss, tradeType);
+  } catch (error) {
+    console.error('Error executing buy:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+export async function executeBackgroundTradeBuy(investmentChoice, targetGain, targetLoss, tradeType) {
+  try {
+    // Check for existing active trade with same token
+    const existingTrade = await findActiveTradeByToken(investmentChoice.tokenData.tokenAddress);
+    
+    if (existingTrade) {
+      console.log('Found existing active trade for token:', {
+        tradeId: existingTrade.tradeId,
+        token: existingTrade.tokenName,
+        currentAmount: existingTrade.amountInvested
+      });
+
+      // Execute new background buy order
+      const buyResult = await executeBuyOrder(investmentChoice, targetGain, targetLoss, tradeType);
+      if (!buyResult.success) {
+        return buyResult;
+      }
+
+      // Update existing trade with additional amounts
+      const updatedTrade = await updateTradeAmounts(
+        existingTrade.tradeId, 
+        buyResult.amountInvested,
+        buyResult.tokensReceived
+      );
+
+      console.log('Updated existing trade:', {
+        tradeId: existingTrade.tradeId,
+        newTotalAmount: updatedTrade.amountInvested,
+        newTotalTokens: updatedTrade.tokensReceived
+      });
+
+      return {
+        success: true,
+        tradeId: existingTrade.tradeId,
+        txId: buyResult.txId,
+        isUpdate: true
+      };
+    }
+
+    // No existing trade found, proceed with new trade
+    return await executeBuyOrder(investmentChoice, targetGain, targetLoss, tradeType);
+  } catch (error) {
+    console.error('Error executing background buy:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// Renamed to be more generic since it's used by both tweet and background trades
+async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
   console.log('Starting buy execution with parameters:', {
-    token: tweetData.tokenData.tokenName,
-    address: tweetData.tokenData.tokenAddress,
+    token: data.tokenData.tokenName,
+    address: data.tokenData.tokenAddress,
     targetGain,
     targetLoss,
-    priceInSol: tweetData.tokenData.tokenPriceInSol
+    priceInSol: data.tokenData.tokenPriceInSol
   });
 
   try {
@@ -29,7 +124,7 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss) {
     const buyRequest = {
       private_key: decryptedPrivateKey, // Using decrypted private key
       public_key: walletDetails.solPublicKey,
-      mint: tweetData.tokenData.tokenAddress,
+      mint: data.tokenData.tokenAddress,
       amount: config.cryptoGlobals.investmentAmountInSol, // Default investment amount in SOL
       referralPublicKey: config.cryptoGlobals.referralPublicKey,
       priorityFee: config.cryptoGlobals.priorityFee, // Default priority fee
@@ -43,13 +138,14 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss) {
     if (buyResponse.data.success) {
       // Store trade information
       const tradeId = await storeTradeInfo({
-        tokenName: tweetData.tokenData.tokenName,
-        tokenAddress: tweetData.tokenData.tokenAddress,
+        tokenName: data.tokenData.tokenName,
+        tokenAddress: data.tokenData.tokenAddress,
         amountInvested: buyRequest.amount,
-        entryPriceSOL: tweetData.tokenData.tokenPriceInSol,
-        entryPriceUSD: tweetData.tokenData.tokenPriceInUSD,
+        entryPriceSOL: data.tokenData.tokenPriceInSol,
+        entryPriceUSD: data.tokenData.tokenPriceInUSD,
         targetPercentageGain: targetGain,
         targetPercentageLoss: targetLoss,
+        tradeType: tradeType, // Add trade type
         tokensReceived: buyResponse.data.tokensPurchased, // Store tokens received
       });
 

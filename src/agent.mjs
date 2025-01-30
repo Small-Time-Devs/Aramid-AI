@@ -336,25 +336,18 @@ export async function postToTwitter(tweetData, client) {
     // Only proceed with trading if tradeTokens is enabled
     if (config.cryptoGlobals.tradeTokens && tweetData.agentInvestmentDecisionComment && 
         (tweetData.agentInvestmentDecisionComment.startsWith("Invest") || 
-         tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit") ||
-         tweetData.agentInvestmentDecisionComment.startsWith("Degen"))) {
+         tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit"))) {
       
       let targetGain, targetLoss;
-      
+      let tradeType = null;
+
       if (tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit")) {
         const gainMatch = tweetData.agentInvestmentDecisionComment.match(/Gain \+(\d+)%/);
         const lossMatch = tweetData.agentInvestmentDecisionComment.match(/Loss -(\d+)%/);
         
         targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
         targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
-      } else if (tweetData.agentInvestmentDecisionComment.startsWith("Degen")) {
-        // Handle Degen format: "Degen: Gain +50% to +100%, Loss -50%"
-        const gainMatch = tweetData.agentInvestmentDecisionComment.match(/Gain \+(\d+)% to \+(\d+)%/);
-        const lossMatch = tweetData.agentInvestmentDecisionComment.match(/Loss -(\d+)%/);
-        
-        // For Degen, use the lower gain target to be conservative
-        targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
-        targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 50;
+        tradeType = 'QUICK_PROFIT';
       } else {
         // Regular Invest format
         const targetGainMatch = tweetData.agentInvestmentDecisionComment.match(/take profit at (\d+)%/i);
@@ -362,12 +355,13 @@ export async function postToTwitter(tweetData, client) {
         
         targetGain = targetGainMatch ? parseFloat(targetGainMatch[1]) : 50;
         targetLoss = targetLossMatch ? parseFloat(targetLossMatch[1]) : 20;
+        tradeType = 'INVEST';
       }
 
       console.log('Extracted trade parameters:', { targetGain, targetLoss });
       
       // Execute trade and wait for result
-      tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss);
+      tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss, tradeType);
       console.log('Trade execution result:', tradeResult);
       
       if (!tradeResult.success) {
