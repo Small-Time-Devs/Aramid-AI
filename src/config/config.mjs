@@ -39,7 +39,7 @@ export const config = {
         tradeTokens: true,
         tradeTokensInBackground: true,
         tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
-        maxOpenTrades: 4,
+        maxOpenTrades: 10,
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
@@ -52,16 +52,21 @@ export const config = {
         investHoldingTimePeriodDays: 3,
         quickProfitHoldingTimePeriodMinutes: 30,
         degenProfitHoldingTimePeriodMinutes: 60,
+
     },
 
     // Add API sections and their respective APIs
     apis:{
         crypto: {
-            coinGecko: 'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=', // Update to accept a variable
+            coinGecko: 'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=',
             dexscreenerTokneProfilesUrl: 'https://api.dexscreener.com/token-profiles/latest/v1',
             dexscreenerTopBoostedUrl: 'https://api.dexscreener.com/token-boosts/top/v1',
             raydiumMintIds: 'https://api-v3.raydium.io/mint/ids?mints=',
             raydiumMintPrice: 'https://api-v3.raydium.io/mint/price?mints=',
+            meteoraPairs: 'https://dlmm-api.meteora.ag/pair/all_with_pagination',
+            meteoraPairsLimit: 10000,
+            meteoraPairsOrderBy: 'desc',
+            meteoraPairsHideLowTvl: 30000,
         },
         weather: {
             openWeatherMap: 'https://api.openweathermap.org/data/2.5/weather?q=London&appid=your_api_key',

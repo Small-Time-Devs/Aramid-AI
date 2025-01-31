@@ -251,14 +251,27 @@ export async function updateTradeAmounts(tradeId, additionalAmount, additionalTo
       Key: { tradeId },
       UpdateExpression: 'SET amountInvested = amountInvested + :amount, tokensReceived = tokensReceived + :tokens',
       ExpressionAttributeValues: {
-        ':amount': additionalAmount,
-        ':tokens': additionalTokens
+        ':amount': parseFloat(additionalAmount) || 0,  // Ensure we have numeric values
+        ':tokens': parseFloat(additionalTokens) || 0
       },
       ReturnValues: 'ALL_NEW'
     };
 
+    // Add validation to ensure we have values
+    if (!params.ExpressionAttributeValues[':amount'] && !params.ExpressionAttributeValues[':tokens']) {
+      throw new Error('No valid amounts provided for update');
+    }
+
+    console.log('Updating trade amounts with params:', {
+      tradeId,
+      additionalAmount: params.ExpressionAttributeValues[':amount'],
+      additionalTokens: params.ExpressionAttributeValues[':tokens']
+    });
+
     const command = new UpdateCommand(params);
     const response = await docClient.send(command);
+    
+    console.log('Trade amounts updated successfully:', response.Attributes);
     return response.Attributes;
   } catch (error) {
     console.error('Error updating trade amounts:', error);

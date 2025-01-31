@@ -1,5 +1,5 @@
 import { TwitterApi } from 'twitter-api-v2';
-import { fetchLatestTokenProfiles, fetchLatestBoostedTokens, fetchTokenNameAndSymbol, fetchTokenPrice, fetchTokenPairs, fetchTokenOrders, fetchPoolInfo, checkTokenAuthority } from './apiUtils.mjs';
+import { fetchLatestTokenProfiles, fetchLatestBoostedTokens, fetchTokenNameAndSymbol, fetchTokenPrice, fetchTokenPairs, fetchTokenOrders, fetchPoolInfo, checkTokenAuthority, fetchMeteoraPairs } from './apiUtils.mjs';
 import { config } from '../config/config.mjs';
 
 let rateLimitRemaining = null;
@@ -220,15 +220,10 @@ export async function fetchTokenData() {
 
 export async function fetchMeteoraTokenData() {
   try {
-    // Fetch all pairs from Meteora API
-    const meteoraResponse = await axios.get('https://dlmm-api.meteora.ag/pair/all_with_pagination?order_by=asc&hide_low_tvl=300000');
+    const pairs = await fetchMeteoraPairs();
     
-    if (!meteoraResponse.data || !meteoraResponse.data.pairs) {
-      throw new Error('Invalid response from Meteora API');
-    }
-
     // Filter pairs where mint_y is SOL
-    const solPairs = meteoraResponse.data.pairs.filter(pair => 
+    const solPairs = pairs.filter(pair => 
       pair.mint_y === 'So11111111111111111111111111111111111111112'
     );
 
@@ -236,42 +231,48 @@ export async function fetchMeteoraTokenData() {
       throw new Error('No SOL pairs found');
     }
 
-    // Select random SOL pair
+    // Select random SOL pair and log it for debugging
     const randomPair = solPairs[Math.floor(Math.random() * solPairs.length)];
-
-    // Fetch additional token pair data from your existing API
     const tokenPairData = await fetchTokenPairs('solana', randomPair.mint_x);
     const checkIfSafe = await checkTokenAuthority(randomPair.mint_x);
-
     if (config.twitter.settings.devMode || config.cryptoGlobals.tradeTokenDevMode) {
-      console.log('Check if token is safe:', checkIfSafe);
+      console.log('Random SOL pair:', randomPair);
       console.log('Token pair data:', tokenPairData);
+      console.log('Check if token is safe:', checkIfSafe);
     }
+
+    if (!tokenPairData) {
+      throw new Error('Failed to fetch token pair data from DexScreener');
+    }
+
+    // Extract social links and website from token pair info
+    const websiteUrl = tokenPairData.info?.websites?.[0]?.url || "No Website URL found";
+    const twitterUrl = tokenPairData.info?.socials?.find(s => s.type === 'twitter')?.url || "No Twitter URL found";
 
     // Format the data combining both Meteora and token pair data
     const meteoraData = {
-      dateCreated: new Date().toUTCString(),
-      tokenName: tokenPairData?.tokenName || randomPair.name.split('-')[0],  
-      tokenSymbol: tokenPairData?.tokenSymbol || randomPair.name.split('-')[0],
-      tokenDescription: `${randomPair.name} Meteora liquidity pool pair`,
+      dateCreated: new Date(tokenPairData.timeCreated).toUTCString(),
+      tokenName: tokenPairData.tokenName,  // Use DexScreener token name
+      tokenSymbol: tokenPairData.tokenSymbol, // Use DexScreener token symbol
+      tokenDescription: `${tokenPairData.tokenName} (${tokenPairData.tokenSymbol}) Meteora liquidity pool pair`, 
       tokenAddress: randomPair.mint_x,
-      tokenTwitterURL: "No Twitter URL provided by Meteora API",
-      tokenWebsiteURL: "No Website URL provided by Meteora API",
+      tokenTwitterURL: twitterUrl,
+      tokenWebsiteURL: websiteUrl,
       tokenPriceInSol: randomPair.current_price,
-      tokenPriceInUSD: tokenPairData?.priceUsd || (randomPair.current_price * 0),
+      tokenPriceInUSD: tokenPairData.priceUsd,
       tokenVolume24h: randomPair.trade_volume_24h,
-      tokenPriceChange5m: tokenPairData?.priceChange5m || 0,
-      tokenPriceChange1h: tokenPairData?.priceChange1h || 0,
-      tokenPriceChange6h: tokenPairData?.priceChange6h || 0,
-      tokenPriceChange24h: tokenPairData?.priceChange24h || 0,
+      tokenPriceChange5m: tokenPairData.priceChange5m || 0,
+      tokenPriceChange1h: tokenPairData.priceChange1h || 0,
+      tokenPriceChange6h: tokenPairData.priceChange6h || 0,
+      tokenPriceChange24h: tokenPairData.priceChange24h || 0,
       tokenLiquidityUSD: parseFloat(randomPair.liquidity),
       tokenLiquidityBase: randomPair.reserve_x_amount,
       tokenLiquidityQuote: randomPair.reserve_y_amount,
-      tokenFDV: tokenPairData?.fdv || 0,
-      tokenMarketCap: tokenPairData?.marketCap || 0,
+      tokenFDV: tokenPairData.fdv || 0,
+      tokenMarketCap: tokenPairData.marketCap || 0,
       tokenSafe: checkIfSafe.safe,
-      tokenFreezeAuthority: checkIfSafe.freezeAuthority,
-      tokenMintAuthority: checkIfSafe.mintAuthority,
+      tokenFreezeAuthority: checkIfSafe.hasFreeze,
+      tokenMintAuthority: checkIfSafe.hasMint,
       
       // Additional Meteora-specific data
       meteoraSpecific: {
@@ -288,21 +289,6 @@ export async function fetchMeteoraTokenData() {
         farmApy: randomPair.farm_apy
       }
     };
-
-    /*
-    Return data structure now includes:
-    - All previous fields
-    - Token pair data fields (price changes, market data)
-    - Token safety check data
-    - Meteora-specific data
-    */
-
-    if (config.twitter.settings.devMode) {
-      console.log('-----------------------------------------------------------------');
-      console.log('---------------------------DEV DEBUG LOG-------------------------');
-      console.log('Meteora Token Data:', meteoraData);
-      console.log('-----------------------------------------------------------------');
-    }
 
     return meteoraData;
 

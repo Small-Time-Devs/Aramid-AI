@@ -1,6 +1,6 @@
 import { config } from "../config/config.mjs";
 import dotenv from "dotenv";
-import { fetchWithTimeout, fetchTokenData, fetchBoostedTokenData } from "../utils/helpers.mjs";
+import { fetchWithTimeout, fetchTokenData, fetchBoostedTokenData, fetchMeteoraTokenData } from "../utils/helpers.mjs";
 import axios from 'axios';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { storeTradeInfo } from '../db/dynamo.mjs';
@@ -38,44 +38,8 @@ export async function generateTradeAnswer() {
 export async function handleTradeQuestion() {
     let tokenData;
     try {
-        /*
-         Step 3 lets go fetch all the token data so we can generate a tweet based on the info we have.
-         Example Data output:
-
-          -----------------------------------------------------------------
-          ---------------------------DEV DEBUG LOG-------------------------
-          Date Created: Mon, 16 Feb 57046 15:20:00 GMT
-          Token Name: Gainocologist
-          Token Symbol: GAYNS
-          Token Description: $GAYNS 
-
-          This is the only OFFICIAL Gainocology project. 
-
-          The master of Gainocology, The Gainocologist himself. 
-
-          This is the ultimate coin for those who seek a massive dose of financial gain. Forget the prescription pad - just HODL and watch your crypto health skyrocket!
-
-          ca: A5JKRAXup65RJndhfBMR1yo1zxZyds2yyZc1niXypump
-          Token Address: A5JKRAXup65RJndhfBMR1yo1zxZyds2yyZc1niXypump
-          Token Twitter URL: https://x.com/gainocologist
-          Token Website URL: No Website On DexScreener Token Profile
-          -----------------------------------------------------------------
-          Token Price In Sol: 0.0000001763
-          Token Price In USD: 0.00004192
-          Token Volume 24h: 314813.95
-          Token Price Change 5m: -4.94
-          Token Price Change 1h: -62.95
-          Token Price Change 6h: -62.95
-          Token Price Change 24h: -62.95
-          Token Liquidity USD: 25821.76
-          Token Liquidity Base: 307602399
-          Token Liquidity Quote: 54.3758
-          Token FDV: 41923
-          Token Market Cap: 41923
-          -----------------------------------------------------------------
-
-        */
-        tokenData = await fetchBoostedTokenData();
+        //tokenData = await fetchBoostedTokenData();
+        tokenData = await fetchMeteoraTokenData();
         if (config.cryptoGlobals.tradeTokenDevMode) {
             console.log('Development mode is enabled. Generated token data:', tokenData);
         }
@@ -162,44 +126,14 @@ async function generateTradePrompt(tokenData) {
     tokenLiquidityQuote,
     tokenFDV,
     tokenMarketCap,
+    tokenSafe,
+    tokenFreezeAuthority,
+    tokenMintAuthority,
+    meteoraSpecific,
   } = tokenData;
-  const influencers = config.twitter.influencers.twitterHandles;
-  const randomInfluencer = influencers[Math.floor(Math.random() * influencers.length)];
 
-  /*
-          -----------------------------------------------------------------
-          ---------------------------DEV DEBUG LOG-------------------------
-          Date Created: Mon, 16 Feb 57046 15:20:00 GMT
-          Token Name: Gainocologist
-          Token Symbol: GAYNS
-          Token Description: $GAYNS 
-
-          This is the only OFFICIAL Gainocology project. 
-
-          The master of Gainocology, The Gainocologist himself. 
-
-          This is the ultimate coin for those who seek a massive dose of financial gain. Forget the prescription pad - just HODL and watch your crypto health skyrocket!
-
-          ca: A5JKRAXup65RJndhfBMR1yo1zxZyds2yyZc1niXypump
-          Token Address: A5JKRAXup65RJndhfBMR1yo1zxZyds2yyZc1niXypump
-          Token Twitter URL: https://x.com/gainocologist
-          Token Website URL: No Website On DexScreener Token Profile
-          -----------------------------------------------------------------
-          Token Price In Sol: 0.0000001763
-          Token Price In USD: 0.00004192
-          Token Volume 24h: 314813.95
-          Token Price Change 5m: -4.94
-          Token Price Change 1h: -62.95
-          Token Price Change 6h: -62.95
-          Token Price Change 24h: -62.95
-          Token Liquidity USD: 25821.76
-          Token Liquidity Base: 307602399
-          Token Liquidity Quote: 54.3758
-          Token FDV: 41923
-          Token Market Cap: 41923
-          -----------------------------------------------------------------
-  */
   return `
+    Token Information:
     Date Created: ${dateCreated}
     Token Name: ${tokenName}
     Token Symbol: ${tokenSymbol}
@@ -207,6 +141,8 @@ async function generateTradePrompt(tokenData) {
     Token Address: ${tokenAddress}
     Token Twitter URL: ${tokenTwitterURL}
     Token Website URL: ${tokenWebsiteURL}
+
+    Price & Market Data:
     Token Price In Sol: ${tokenPriceInSol}
     Token Price In USD: ${tokenPriceInUSD}
     Token Volume 24h: ${tokenVolume24h}
@@ -219,8 +155,25 @@ async function generateTradePrompt(tokenData) {
     Token Liquidity Quote: ${tokenLiquidityQuote}
     Token FDV: ${tokenFDV}
     Token Market Cap: ${tokenMarketCap}
-    Random Influencer To Mention: ${randomInfluencer}
-  `
+
+    Security Info:
+    Token Safe: ${tokenSafe}
+    Has Freeze Authority: ${tokenFreezeAuthority}
+    Has Mint Authority: ${tokenMintAuthority}
+
+    Meteora Pool Info:
+    Pool Address: ${meteoraSpecific?.pairAddress}
+    Bin Step: ${meteoraSpecific?.binStep}
+    Base Fee %: ${meteoraSpecific?.baseFeePercent}
+    Max Fee %: ${meteoraSpecific?.maxFeePercent}
+    Protocol Fee %: ${meteoraSpecific?.protocolFeePercent}
+    Fees 24h: ${meteoraSpecific?.fees24h}
+    Today's Fees: ${meteoraSpecific?.todayFees}
+    Pool APR: ${meteoraSpecific?.apr}
+    Pool APY: ${meteoraSpecific?.apy}
+    Farm APR: ${meteoraSpecific?.farmApr}
+    Farm APY: ${meteoraSpecific?.farmApy}
+  `;
 }
 
 export async function executeTrade(investmentChoice) {

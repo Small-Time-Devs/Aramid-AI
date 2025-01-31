@@ -113,6 +113,13 @@ export async function fetchTokenPairs(chainId, tokenAddress) {
       fdv: filteredPair.fdv,
       marketCap: filteredPair.marketCap,
       timeCreated: filteredPair.pairCreatedAt,
+      info: {
+        websites: filteredPair.info?.websites || [],
+        socials: filteredPair.info?.socials || [],
+        imageUrl: filteredPair.info?.imageUrl,
+        header: filteredPair.info?.header,
+        openGraph: filteredPair.info?.openGraph
+      }
     };
 
     return result;
@@ -180,7 +187,13 @@ export async function checkTokenAuthority(mintAddress) {
 
 export async function fetchMeteoraPoolInfo() {
   try {
-    const response = await axios.get('https://dlmm-api.meteora.ag/pair/all_with_pagination?limit=200&order_by=desc&hide_low_tvl=300000');
+    const response = await axios.get(config.apis.crypto.meteoraPairs, {
+      params: {
+        limit: config.apis.crypto.meteoraPairsLimit,
+        order_by: config.apis.crypto.meteoraPairsOrderBy,
+        hide_low_tvl: config.apis.crypto.meteoraPairsHideLowTvl
+      }
+    });
     
     if (!response.data || !response.data.pairs) {
       throw new Error('Invalid response from Meteora API');
@@ -229,5 +242,25 @@ export async function getMeteoraPoolByAddress(poolAddress) {
   } catch (error) {
     console.error(`Error getting Meteora pool ${poolAddress}:`, error);
     throw error;
+  }
+}
+
+export async function fetchMeteoraPairs() {
+  try {
+    const response = await axios.get(config.apis.crypto.meteoraPairs, {
+      params: {
+        order_by: 'asc',
+        hide_low_tvl: 300000
+      }
+    });
+    
+    if (!response.data || !response.data.pairs) {
+      throw new Error('Invalid response from Meteora API');
+    }
+
+    return response.data.pairs;
+  } catch (error) {
+    console.error('Error fetching Meteora pairs:', error);
+    throw new Error('Failed to fetch Meteora pair information');
   }
 }

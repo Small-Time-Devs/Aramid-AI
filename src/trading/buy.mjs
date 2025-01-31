@@ -136,26 +136,47 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
     const buyResponse = await axios.post('https://api.smalltimedevs.com/solana/raydium-api/aramidBuy', buyRequest);
 
     if (buyResponse.data.success) {
-      // Store trade information
+      const tokensPurchased = parseFloat(buyResponse.data.tokensPurchased);
+      const amountInvested = parseFloat(buyRequest.amount);
+
+      // For existing trades
+      if (data.existingTradeId) {
+        const updatedTrade = await updateTradeAmounts(
+          data.existingTradeId,
+          amountInvested,
+          tokensPurchased
+        );
+
+        return {
+          success: true,
+          tradeId: data.existingTradeId,
+          txId: buyResponse.data.txid,
+          amountInvested,
+          tokensReceived: tokensPurchased
+        };
+      }
+
+      // For new trades
       const tradeId = await storeTradeInfo({
         tokenName: data.tokenData.tokenName,
         tokenAddress: data.tokenData.tokenAddress,
-        amountInvested: buyRequest.amount,
+        amountInvested,
         entryPriceSOL: data.tokenData.tokenPriceInSol,
         entryPriceUSD: data.tokenData.tokenPriceInUSD,
         targetPercentageGain: targetGain,
         targetPercentageLoss: targetLoss,
-        tradeType: tradeType, // Add trade type
-        tokensReceived: buyResponse.data.tokensPurchased, // Store tokens received
+        tradeType: tradeType,
+        tokensReceived: tokensPurchased,
       });
 
-      // Start monitoring price for this trade
       startPriceMonitoring(tradeId);
       
       return { 
         success: true, 
         tradeId,
-        txId: buyResponse.data.txid // Add transaction ID to response
+        txId: buyResponse.data.txid,
+        amountInvested,
+        tokensReceived: tokensPurchased
       };
     }
     
