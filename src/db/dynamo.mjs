@@ -121,24 +121,16 @@ export async function storeTradeInfo(data) {
 // Update trade with sell information
 export async function updateTradeWithSellInfo(tradeId, sellData) {
   try {
-    const params = {
-      TableName: 'AramidAI-X-Trades',
-      Key: { tradeId },
-      UpdateExpression: 'SET exitPriceSOL = :exitSOL, exitPriceUSD = :exitUSD, sellPercentageGain = :gain, sellPercentageLoss = :loss, #tradeStatus = :statusValue',
-      ExpressionAttributeNames: {
-        '#tradeStatus': 'status'  // Use a different name for the status attribute
-      },
-      ExpressionAttributeValues: {
-        ':exitSOL': sellData.exitPriceSOL,
-        ':exitUSD': sellData.exitPriceUSD,
-        ':gain': sellData.sellPercentageGain,
-        ':loss': sellData.sellPercentageLoss,
-        ':statusValue': 'COMPLETED'
-      }
-    };
+    // First get the complete trade data
+    const trade = await getTrade(tradeId);
+    if (!trade) {
+      throw new Error(`No trade found with ID: ${tradeId}`);
+    }
 
-    const command = new UpdateCommand(params);
-    await docClient.send(command);
+    // Move trade to past trades with sell info
+    await moveTradeToPastTrades(trade, sellData);
+
+    return true;
   } catch (error) {
     console.error('Error updating trade with sell info:', error);
     throw error;
@@ -235,8 +227,14 @@ export async function findActiveTradeByToken(tokenAddress) {
       }
     };
 
+    console.log('Looking for existing trade:', { tokenAddress });
     const command = new ScanCommand(params);
     const response = await docClient.send(command);
+    
+    if (response.Items && response.Items.length > 0) {
+      console.log('Found existing trade:', response.Items[0]);
+    }
+    
     return response.Items?.[0] || null;
   } catch (error) {
     console.error('Error finding active trade by token:', error);
@@ -251,18 +249,14 @@ export async function updateTradeAmounts(tradeId, additionalAmount, additionalTo
       Key: { tradeId },
       UpdateExpression: 'SET amountInvested = amountInvested + :amount, tokensReceived = tokensReceived + :tokens',
       ExpressionAttributeValues: {
-        ':amount': parseFloat(additionalAmount) || 0,  // Ensure we have numeric values
+        ':amount': parseFloat(additionalAmount) || 0,
         ':tokens': parseFloat(additionalTokens) || 0
       },
       ReturnValues: 'ALL_NEW'
     };
 
-    // Add validation to ensure we have values
-    if (!params.ExpressionAttributeValues[':amount'] && !params.ExpressionAttributeValues[':tokens']) {
-      throw new Error('No valid amounts provided for update');
-    }
-
-    console.log('Updating trade amounts with params:', {
+    // Log update attempt
+    console.log('Updating trade amounts:', {
       tradeId,
       additionalAmount: params.ExpressionAttributeValues[':amount'],
       additionalTokens: params.ExpressionAttributeValues[':tokens']
@@ -271,10 +265,48 @@ export async function updateTradeAmounts(tradeId, additionalAmount, additionalTo
     const command = new UpdateCommand(params);
     const response = await docClient.send(command);
     
-    console.log('Trade amounts updated successfully:', response.Attributes);
+    console.log('Trade updated successfully:', response.Attributes);
     return response.Attributes;
   } catch (error) {
     console.error('Error updating trade amounts:', error);
+    throw error;
+  }
+}
+
+export async function moveTradeToPastTrades(trade, sellInfo) {
+  try {
+    // First, create record in past trades table
+    const pastTradeParams = {
+      TableName: 'AramidAI-X-PastTrades',
+      Item: {
+        ...trade,  // Spread all existing trade data
+        exitPriceSOL: sellInfo.exitPriceSOL,
+        exitPriceUSD: sellInfo.exitPriceUSD,
+        sellPercentageGain: sellInfo.sellPercentageGain,
+        sellPercentageLoss: sellInfo.sellPercentageLoss,
+        status: 'COMPLETED',
+        completedAt: new Date().toISOString()
+      }
+    };
+
+    // Insert into past trades
+    const putCommand = new PutCommand(pastTradeParams);
+    await docClient.send(putCommand);
+    console.log(`Trade ${trade.tradeId} archived to past trades`);
+
+    // Then delete from active trades
+    const deleteParams = {
+      TableName: 'AramidAI-X-Trades',
+      Key: { tradeId: trade.tradeId }
+    };
+
+    const deleteCommand = new DeleteCommand(deleteParams);
+    await docClient.send(deleteCommand);
+    console.log(`Trade ${trade.tradeId} removed from active trades`);
+
+    return true;
+  } catch (error) {
+    console.error('Error archiving trade:', error);
     throw error;
   }
 }

@@ -107,18 +107,20 @@ function calculatePriceChange(currentPrice, entryPrice) {
 function shouldSell(priceChangePercent, trade) {
   const currentTime = new Date().getTime();
   const tradeTime = new Date(trade.timestamp).getTime();
-  const timeElapsedMinutes = (currentTime - tradeTime) / (1000 * 60);
-  const timeElapsedDays = timeElapsedMinutes / (60 * 24);
-
-  // Check trade type and corresponding time limits
-  if (trade.tradeType === 'INVEST' && timeElapsedDays >= config.cryptoGlobals.investHoldingTimePeriodDays) {
-    console.log(`Selling INVEST trade due to exceeding time limit of ${config.cryptoGlobals.investHoldingTimePeriodDays} days`);
-    return true;
-  }
-
-  if (trade.tradeType === 'QUICK_PROFIT' && timeElapsedMinutes >= config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes) {
-    console.log(`Selling QUICK_PROFIT trade due to exceeding time limit of ${config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes} minutes`);
-    return true;
+  
+  // Calculate elapsed time based on trade type
+  if (trade.tradeType === 'INVEST') {
+    const timeElapsedDays = (currentTime - tradeTime) / (1000 * 60 * 60 * 24); // Convert to days
+    if (timeElapsedDays >= config.cryptoGlobals.investHoldingTimePeriodDays) {
+      console.log(`Selling INVEST trade due to exceeding time limit of ${config.cryptoGlobals.investHoldingTimePeriodDays} days`);
+      return true;
+    }
+  } else if (trade.tradeType === 'QUICK_PROFIT') {
+    const timeElapsedMinutes = (currentTime - tradeTime) / (1000 * 60); // Keep in minutes
+    if (timeElapsedMinutes >= config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes) {
+      console.log(`Selling QUICK_PROFIT trade due to exceeding time limit of ${config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes} minutes`);
+      return true;
+    }
   }
 
   // Check profit/loss targets if time limit hasn't been reached

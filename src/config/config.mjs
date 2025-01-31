@@ -39,7 +39,7 @@ export const config = {
         tradeTokens: true,
         tradeTokensInBackground: true,
         tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
-        maxOpenTrades: 10,
+        maxOpenTrades: 20,
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
@@ -64,7 +64,7 @@ export const config = {
             raydiumMintIds: 'https://api-v3.raydium.io/mint/ids?mints=',
             raydiumMintPrice: 'https://api-v3.raydium.io/mint/price?mints=',
             meteoraPairs: 'https://dlmm-api.meteora.ag/pair/all_with_pagination',
-            meteoraPairsLimit: 10000,
+            meteoraPairsLimit: 15000,
             meteoraPairsOrderBy: 'desc',
             meteoraPairsHideLowTvl: 30000,
         },

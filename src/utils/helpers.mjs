@@ -231,8 +231,28 @@ export async function fetchMeteoraTokenData() {
       throw new Error('No SOL pairs found');
     }
 
-    // Select random SOL pair and log it for debugging
-    const randomPair = solPairs[Math.floor(Math.random() * solPairs.length)];
+    // Store total number of SOL pairs found
+    const totalSolPairs = solPairs.length;
+    
+    // Generate random index between 10 and total pairs found
+    // Make sure we have at least 10 pairs to choose from
+    if (totalSolPairs < 10) {
+      throw new Error('Not enough SOL pairs found (minimum 10 required)');
+    }
+    
+    const randomIndex = Math.floor(Math.random() * (totalSolPairs - 10)) + 10;
+    const randomPair = solPairs[randomIndex];
+    
+    // Log selection info for debugging
+    console.log('Pair selection info:', {
+      totalPairs: pairs.length,
+      solPairsFound: totalSolPairs,
+      randomIndex,
+      selectedPair: randomPair.name,
+      minIndex: 10,
+      maxIndex: totalSolPairs
+    });
+
     const tokenPairData = await fetchTokenPairs('solana', randomPair.mint_x);
     const checkIfSafe = await checkTokenAuthority(randomPair.mint_x);
     if (config.twitter.settings.devMode || config.cryptoGlobals.tradeTokenDevMode) {

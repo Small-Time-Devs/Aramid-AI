@@ -57,11 +57,22 @@ export async function executeTradeSell(trade, currentPrice) {
           throw new Error('Failed to fetch token price data');
         }
 
-        await updateTradeWithSellInfo(trade.tradeId, {
+        // Prepare sell info
+        const sellInfo = {
           exitPriceSOL: currentPrice,
-          exitPriceUSD: tokenData.priceUsd, // Use price from fetchTokenPairs
+          exitPriceUSD: tokenData.priceUsd,
           sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : 0,
           sellPercentageLoss: priceChangePercent < 0 ? Math.abs(priceChangePercent) : 0
+        };
+
+        // Update trade info and move to past trades
+        await updateTradeWithSellInfo(trade.tradeId, sellInfo);
+
+        console.log('Trade completed and archived:', {
+          tradeId: trade.tradeId,
+          tokenAddress: trade.tokenAddress,
+          priceChangePercent,
+          exitPrice: currentPrice
         });
 
         return { success: true, priceChangePercent };

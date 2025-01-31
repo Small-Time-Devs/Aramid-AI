@@ -195,11 +195,13 @@ export async function executeTrade(investmentChoice) {
         let tradeResult = null;
 
         // Only proceed with trading if tradeTokens is enabled
-        if (config.cryptoGlobals.tradeTokensInBackground && investmentChoice.agentInvestmentDecisionComment && 
-            (investmentChoice.agentInvestmentDecisionComment.startsWith("Quick Profit"))) {
+        if (config.cryptoGlobals.tradeTokensInBackground && 
+            investmentChoice.agentInvestmentDecisionComment && 
+            (investmentChoice.agentInvestmentDecisionComment.startsWith("Quick Profit") || 
+             investmentChoice.agentInvestmentDecisionComment.startsWith("Invest"))) {
           
           let targetGain, targetLoss;
-          let tradeType = 'QUICK_PROFIT';
+          let tradeType;
           
           if (investmentChoice.agentInvestmentDecisionComment.startsWith("Quick Profit")) {
             const gainMatch = investmentChoice.agentInvestmentDecisionComment.match(/Gain \+(\d+)%/);
@@ -207,13 +209,27 @@ export async function executeTrade(investmentChoice) {
             
             targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
             targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
+            tradeType = 'QUICK_PROFIT';
+          } else {
+            // Regular Invest format
+            const targetGainMatch = investmentChoice.agentInvestmentDecisionComment.match(/take profit at (\d+)%/i);
+            const targetLossMatch = investmentChoice.agentInvestmentDecisionComment.match(/stop loss at (\d+)%/i);
+            
+            targetGain = targetGainMatch ? parseFloat(targetGainMatch[1]) : 50;
+            targetLoss = targetLossMatch ? parseFloat(targetLossMatch[1]) : 20;
+            tradeType = 'INVEST';
           }
 
-          console.log('Extracted trade parameters:', { targetGain, targetLoss });
+          console.log('Extracted trade parameters:', { 
+            targetGain, 
+            targetLoss,
+            tradeType,
+            timeLimit: tradeType === 'INVEST' ? 
+              `${config.cryptoGlobals.investHoldingTimePeriodDays} days` : 
+              `${config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes} minutes`
+          });
           
-          // Execute trade and wait for result
           tradeResult = await executeBackgroundTradeBuy(investmentChoice, targetGain, targetLoss, tradeType);
-          console.log('Trade execution result:', tradeResult);
           
           if (!tradeResult.success) {
             console.error('Trade execution failed:', tradeResult.error);

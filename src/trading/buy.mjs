@@ -109,78 +109,85 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
   });
 
   try {
-    // Get wallet details from DynamoDB
-    const walletDetails = await getWalletDetails();
+    // Check for existing active trade first
+    const existingTrade = await findActiveTradeByToken(data.tokenData.tokenAddress);
     
+    // Execute buy first before updating any DB records
+    const walletDetails = await getWalletDetails();
     if (!walletDetails || !walletDetails.solPrivateKey) {
       throw new Error('Wallet details not found or private key missing');
     }
 
-    // Decrypt the private key before using it
-    const decryptedPrivateKey = decryptPrivateKey(walletDetails.solPrivateKey);
-    console.log('Private key decrypted successfully');
-
-    // Prepare buy request with decrypted private key
     const buyRequest = {
-      private_key: decryptedPrivateKey, // Using decrypted private key
+      private_key: decryptPrivateKey(walletDetails.solPrivateKey),
       public_key: walletDetails.solPublicKey,
       mint: data.tokenData.tokenAddress,
-      amount: config.cryptoGlobals.investmentAmountInSol, // Default investment amount in SOL
+      amount: config.cryptoGlobals.investmentAmountInSol,
       referralPublicKey: config.cryptoGlobals.referralPublicKey,
-      priorityFee: config.cryptoGlobals.priorityFee, // Default priority fee
-      slippage: config.cryptoGlobals.buySlippage, // 5% slippage
-      useJito: config.cryptoGlobals.useJito,
+      priorityFee: config.cryptoGlobals.priorityFee,
+      slippage: config.cryptoGlobals.buySlippage,
+      useJito: config.cryptoGlobals.useJito
     };
 
-    // Execute buy order
     const buyResponse = await axios.post('https://api.smalltimedevs.com/solana/raydium-api/aramidBuy', buyRequest);
 
-    if (buyResponse.data.success) {
-      const tokensPurchased = parseFloat(buyResponse.data.tokensPurchased);
-      const amountInvested = parseFloat(buyRequest.amount);
+    if (!buyResponse.data.success || !buyResponse.data.txid) {
+      console.error('Buy order failed or no transaction ID received');
+      return { success: false, error: 'Buy order failed' };
+    }
 
-      // For existing trades
-      if (data.existingTradeId) {
-        const updatedTrade = await updateTradeAmounts(
-          data.existingTradeId,
-          amountInvested,
-          tokensPurchased
-        );
+    const tokensPurchased = parseFloat(buyResponse.data.tokensPurchased);
+    const amountInvested = parseFloat(buyRequest.amount);
 
-        return {
-          success: true,
-          tradeId: data.existingTradeId,
-          txId: buyResponse.data.txid,
-          amountInvested,
-          tokensReceived: tokensPurchased
-        };
-      }
-
-      // For new trades
-      const tradeId = await storeTradeInfo({
-        tokenName: data.tokenData.tokenName,
-        tokenAddress: data.tokenData.tokenAddress,
-        amountInvested,
-        entryPriceSOL: data.tokenData.tokenPriceInSol,
-        entryPriceUSD: data.tokenData.tokenPriceInUSD,
-        targetPercentageGain: targetGain,
-        targetPercentageLoss: targetLoss,
-        tradeType: tradeType,
-        tokensReceived: tokensPurchased,
+    // Only proceed with DB updates if we have a successful transaction
+    if (existingTrade) {
+      console.log('Updating existing trade after successful purchase:', {
+        tradeId: existingTrade.tradeId,
+        txId: buyResponse.data.txid,
+        addingAmount: amountInvested,
+        addingTokens: tokensPurchased
       });
 
-      startPriceMonitoring(tradeId);
-      
-      return { 
-        success: true, 
-        tradeId,
-        txId: buyResponse.data.txid,
+      const updatedTrade = await updateTradeAmounts(
+        existingTrade.tradeId,
         amountInvested,
-        tokensReceived: tokensPurchased
+        tokensPurchased
+      );
+
+      return {
+        success: true,
+        tradeId: existingTrade.tradeId,
+        txId: buyResponse.data.txid,
+        amountInvested: updatedTrade.amountInvested,
+        tokensReceived: updatedTrade.tokensReceived,
+        isUpdate: true
       };
     }
+
+    // Create new trade record only after successful purchase
+    const tradeId = await storeTradeInfo({
+      tokenName: data.tokenData.tokenName,
+      tokenAddress: data.tokenData.tokenAddress,
+      amountInvested,
+      entryPriceSOL: data.tokenData.tokenPriceInSol,
+      entryPriceUSD: data.tokenData.tokenPriceInUSD,
+      targetPercentageGain: targetGain,
+      targetPercentageLoss: targetLoss,
+      tradeType: tradeType,
+      tokensReceived: tokensPurchased,
+    });
+
+    startPriceMonitoring(tradeId);
     
-    return { success: false, error: 'Buy order failed' };
+    return { 
+      success: true, 
+      tradeId,
+      txId: buyResponse.data.txid,
+      amountInvested,
+      tokensReceived: tokensPurchased,
+      isUpdate: false
+    };
+    
   } catch (error) {
     console.error('Error executing buy:', error);
     return { success: false, error: error.message };

@@ -187,13 +187,7 @@ export async function checkTokenAuthority(mintAddress) {
 
 export async function fetchMeteoraPoolInfo() {
   try {
-    const response = await axios.get(config.apis.crypto.meteoraPairs, {
-      params: {
-        limit: config.apis.crypto.meteoraPairsLimit,
-        order_by: config.apis.crypto.meteoraPairsOrderBy,
-        hide_low_tvl: config.apis.crypto.meteoraPairsHideLowTvl
-      }
-    });
+    const response = await axios.get('https://dlmm-api.meteora.ag/pair/all_with_pagination?limit=10000&order_by=desc&hide_low_tvl=30000');
     
     if (!response.data || !response.data.pairs) {
       throw new Error('Invalid response from Meteora API');
@@ -225,7 +219,17 @@ export async function fetchMeteoraPoolInfo() {
       apy: pair.apy,
       farmApr: pair.farm_apr,
       farmApy: pair.farm_apy,
-      isHidden: pair.hide
+      isHidden: pair.hide,
+      // Add these additional fields
+      rewardTokenXPriceInSOL: pair.reward_x_price,
+      rewardTokenYPriceInSOL: pair.reward_y_price,
+      rewardTokenXPriceInUSD: pair.reward_x_price_usd,
+      rewardTokenYPriceInUSD: pair.reward_y_price_usd,
+      totalTradingFeesUSD: pair.total_trading_fees_usd,
+      pairCreatedAt: pair.created_at,
+      updatedAt: pair.updated_at,
+      // Return the original API fields as well
+      raw: pair
     }));
 
   } catch (error) {
@@ -247,12 +251,8 @@ export async function getMeteoraPoolByAddress(poolAddress) {
 
 export async function fetchMeteoraPairs() {
   try {
-    const response = await axios.get(config.apis.crypto.meteoraPairs, {
-      params: {
-        order_by: 'asc',
-        hide_low_tvl: 300000
-      }
-    });
+    // Use the same URL as fetchMeteoraPoolInfo for consistency
+    const response = await axios.get('https://dlmm-api.meteora.ag/pair/all_with_pagination?limit=10000&order_by=desc&hide_low_tvl=30000');
     
     if (!response.data || !response.data.pairs) {
       throw new Error('Invalid response from Meteora API');
