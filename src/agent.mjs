@@ -1,7 +1,7 @@
 import { config } from "./config/config.mjs";
 import dotenv from "dotenv";
 import { TwitterApi } from "twitter-api-v2";
-import { checkRateLimit, updateRateLimitInfo, fetchWithTimeout, fetchTokenData, fetchMeteoraTokenData } from "./utils/helpers.mjs";
+import { checkRateLimit, updateRateLimitInfo } from "./utils/helpers.mjs";
 import axios from 'axios';
 import { saveTweetData } from './db/dynamo.mjs';
 import { decryptPrivateKey } from './encryption/encryption.mjs';
@@ -11,42 +11,6 @@ import { executeTradeBuy } from './trading/buy.mjs';
 
 dotenv.config();
 const url = 'https://api.smalltimedevs.com/ai/hive-engine'
-
-class TwitterAgent {
-  constructor(name, personality, specialty) {
-    this.name = name;
-    this.personality = personality;
-    this.specialty = specialty;
-    this.history = [];
-  }
-// Used to respond to a tweet
-  async generateResponse(input) {
-
-    console.log("Generating response for input:", input);
-    
-    const prompt = `${this.personality}\nUser: ${input}\n${this.name}:`;
-
-    try {
-        const response = await fetchWithTimeout(`${url}/agent-chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt: prompt }),
-            timeout: 20000, // 20 seconds timeout
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-                
-        const generatedResponse = response.data.text;
-        this.history.push(generatedResponse);
-        return generatedResponse;
-
-    } catch (error) {
-        console.error('Error connecting to external API:', error);
-    }
-  }
-}
 
 export async function generateAutoPostTweet() {
     let tweetData;

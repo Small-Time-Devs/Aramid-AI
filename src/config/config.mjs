@@ -12,7 +12,7 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: true,
+            xAutoPoster: false,
             devMode: false,
             xAutoResponder: false,
             postsPerDay: 100,
@@ -35,11 +35,11 @@ export const config = {
     },
 
     cryptoGlobals: {
-        tradeTokenDevMode: false,
+        tradeTokenDevMode: true,
         tradeTokens: true,
         tradeTokensInBackground: true,
-        tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
-        maxOpenTrades: 20,
+        tradeTokensInBackgroundInterval: 10000, // 60 seconds in miliseconds
+        maxOpenTrades: 5,
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
@@ -49,10 +49,8 @@ export const config = {
         priorityFee: 200000, // Default priority fee
         referralPublicKey: 'G479Un81UEDZEeHPv23Uy9n2qqgy1CzT7muJVj7PUHJF',
         useJito: false,
-        investHoldingTimePeriodDays: 3,
+        investHoldingTimePeriodHours: 3,
         quickProfitHoldingTimePeriodMinutes: 30,
-        degenProfitHoldingTimePeriodMinutes: 60,
-
     },
 
     // Add API sections and their respective APIs
@@ -63,13 +61,6 @@ export const config = {
             dexscreenerTopBoostedUrl: 'https://api.dexscreener.com/token-boosts/top/v1',
             raydiumMintIds: 'https://api-v3.raydium.io/mint/ids?mints=',
             raydiumMintPrice: 'https://api-v3.raydium.io/mint/price?mints=',
-            meteoraPairs: 'https://dlmm-api.meteora.ag/pair/all_with_pagination',
-            meteoraPairsLimit: 15000,
-            meteoraPairsOrderBy: 'desc',
-            meteoraPairsHideLowTvl: 30000,
-        },
-        weather: {
-            openWeatherMap: 'https://api.openweathermap.org/data/2.5/weather?q=London&appid=your_api_key',
         },
     },
 };

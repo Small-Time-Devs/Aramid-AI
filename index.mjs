@@ -112,6 +112,10 @@ async function autoTrader() {
 
       if (config.cryptoGlobals.tradeTokenDevMode) {
         console.log('Trade dev mode enabled:', {
+          token: investmentChoice.tokenData.tokenName,
+          tokenAddress: investmentChoice.tokenData.tokenAddress,
+          tokenPrice: investmentChoice.tokenData.tokenPriceInSol,
+          tokenPriceSOL: investmentChoice.tokenData.tokenPriceInSol,
           investmentComment: investmentChoice.agentInvestmentComment,
           investmentDecision: investmentChoice.agentInvestmentDecisionComment
         });

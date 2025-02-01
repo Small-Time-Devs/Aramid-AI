@@ -1,16 +1,18 @@
 import { config } from "../config/config.mjs";
 import dotenv from "dotenv";
-import { fetchWithTimeout, fetchTokenData, fetchBoostedTokenData, fetchMeteoraTokenData } from "../utils/helpers.mjs";
+import { fetchWithTimeout, fetchLatestTokenData, fetchBoostedTokenData  } from "../utils/helpers.mjs";
 import axios from 'axios';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { storeTradeInfo } from '../db/dynamo.mjs';
 import { startPriceMonitoring } from '../trading/pnl.mjs';
 import { executeTradeBuy, executeBackgroundTradeBuy } from '../trading/buy.mjs';
 
+// step 1
 export async function generateTradeAnswer() {
     let investmentChoice;
     try {
-        investmentChoice = await handleTradeQuestion();
+      // Step 2
+        investmentChoice = await pickNewTokenNonBoosted();
         console.log("Generated Investment Decision:", investmentChoice);
 
         // Skip if the investment decision is a "Pass"
@@ -34,37 +36,25 @@ export async function generateTradeAnswer() {
     }
 }
 
-// Passed this function
-export async function handleTradeQuestion() {
+async function pickNewTokenNonBoosted() {
     let tokenData;
     try {
-        //tokenData = await fetchBoostedTokenData();
-        tokenData = await fetchMeteoraTokenData();
-        if (config.cryptoGlobals.tradeTokenDevMode) {
-            console.log('Development mode is enabled. Generated token data:', tokenData);
-        }
-
+      // Step 3
+        tokenData = await fetchLatestTokenData();
+        console.log('Token data:', tokenData);
     } catch (error) {
         console.error("Error fetching token data going to try again!", error);
-        await handleTradeQuestion();
+        return await pickNewTokenNonBoosted();
     }
 
-    // Step 4 call the generatePrompt function
-    const prompt = await generateTradePrompt(tokenData);
-    console.log("Generated prompt:", prompt);
-
+    const tokenAddress = tokenData.tokenAddress;
+    const chainId = tokenData.chainId;
     // If the response is good for the prompt then we can move on to the next step of calling the api with the response.
     let agentResponses;
     try {
-        // Step 5 call the external API with the prompt
-        if (config.cryptoGlobals.tradeTokenDevMode) {
-        console.log("Sending request to external API with payload:", { query: prompt });
-        }
-
-        const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/trading-agent-chat', { query: prompt });
-        //console.log("Received response from external API:", response.data);
+        const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/trading-agent-chat', { chainId, tokenAddress });
+        console.log("Received response from external API:", response.data);
         agentResponses = response.data.agents;
-
     } catch (error) {
         console.error("Error connecting to external API:", error.response ? error.response.data : error.message);
         throw new Error("Failed to connect to external API.");
@@ -80,15 +70,13 @@ export async function handleTradeQuestion() {
     const agentInvestmentComment = investmentAgent.response;
     const agentInvestmentDecisionComment = investmentAgent.decision;
 
-    if (config.cryptoGlobals.tradeTokenDevMode) {
-      console.log("Analyst Response:", agetnAnalysisComment);
-      console.log("Investment Response:", agentInvestmentComment);
-      console.log("Investment Decision:", agentInvestmentDecisionComment);
-    }
+    console.log("Analyst Response:", agetnAnalysisComment);
+    console.log("Investment Response:", agentInvestmentComment);
+    console.log("Investment Decision:", agentInvestmentDecisionComment);
 
     if (!agentInvestmentDecisionComment) {
         console.error("Invalid investment agent decision, generating again.");
-        await handleTradeQuestion();
+        return await pickNewTokenNonBoosted();
     }
 
     const investmentChoice = {
@@ -98,82 +86,7 @@ export async function handleTradeQuestion() {
         tokenData,
     };
 
-    if (config.twitter.settings.devMode) {
-        console.log('Development mode is enabled. Generated Investment Decision:', investmentChoice);
-    }
-
     return investmentChoice;
-}
-
-async function generateTradePrompt(tokenData) {
-  const {
-    dateCreated,
-    tokenName,
-    tokenSymbol,
-    tokenDescription,
-    tokenAddress,
-    tokenTwitterURL,
-    tokenWebsiteURL,
-    tokenPriceInSol,
-    tokenPriceInUSD,
-    tokenVolume24h,
-    tokenPriceChange5m,
-    tokenPriceChange1h,
-    tokenPriceChange6h,
-    tokenPriceChange24h,
-    tokenLiquidityUSD,
-    tokenLiquidityBase,
-    tokenLiquidityQuote,
-    tokenFDV,
-    tokenMarketCap,
-    tokenSafe,
-    tokenFreezeAuthority,
-    tokenMintAuthority,
-    meteoraSpecific,
-  } = tokenData;
-
-  return `
-    Token Information:
-    Date Created: ${dateCreated}
-    Token Name: ${tokenName}
-    Token Symbol: ${tokenSymbol}
-    Token Description: ${tokenDescription}
-    Token Address: ${tokenAddress}
-    Token Twitter URL: ${tokenTwitterURL}
-    Token Website URL: ${tokenWebsiteURL}
-
-    Price & Market Data:
-    Token Price In Sol: ${tokenPriceInSol}
-    Token Price In USD: ${tokenPriceInUSD}
-    Token Volume 24h: ${tokenVolume24h}
-    Token Price Change 5m: ${tokenPriceChange5m}
-    Token Price Change 1h: ${tokenPriceChange1h}
-    Token Price Change 6h: ${tokenPriceChange6h}
-    Token Price Change 24h: ${tokenPriceChange24h}
-    Token Liquidity USD: ${tokenLiquidityUSD}
-    Token Liquidity Base: ${tokenLiquidityBase}
-    Token Liquidity Quote: ${tokenLiquidityQuote}
-    Token FDV: ${tokenFDV}
-    Token Market Cap: ${tokenMarketCap}
-
-    Security Info:
-    Token Safe: ${tokenSafe}
-    Has Freeze Authority: ${tokenFreezeAuthority}
-    Has Mint Authority: ${tokenMintAuthority}
-
-    Meteora Pool Info:
-    Pool Address: ${meteoraSpecific?.pairAddress}
-    Bin Step: ${meteoraSpecific?.binStep}
-    Base Fee %: ${meteoraSpecific?.baseFeePercent}
-    Max Fee %: ${meteoraSpecific?.maxFeePercent}
-    Protocol Fee %: ${meteoraSpecific?.protocolFeePercent}
-    Fees 24h: ${meteoraSpecific?.fees24h}
-    Today's Fees: ${meteoraSpecific?.todayFees}
-    Pool APR: ${meteoraSpecific?.apr}
-    Pool APY: ${meteoraSpecific?.apy}
-    Farm APR: ${meteoraSpecific?.farmApr}
-    Farm APY: ${meteoraSpecific?.farmApy}
-  `;
 }
 
 export async function executeTrade(investmentChoice) {
