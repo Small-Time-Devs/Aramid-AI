@@ -47,12 +47,17 @@ async function pickNewTokenNonBoosted() {
         return await pickNewTokenNonBoosted();
     }
 
+    // Step 4
     const tokenAddress = tokenData.tokenAddress;
     const chainId = tokenData.chainId;
+
+    // Make the const for the api specific request
+    const contractAddress = tokenAddress;
+    const chain = chainId;
     // If the response is good for the prompt then we can move on to the next step of calling the api with the response.
     let agentResponses;
     try {
-        const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/trading-agent-chat', { chainId, tokenAddress });
+        const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/autoTrading-agent-chat', {chain, contractAddress });
         console.log("Received response from external API:", response.data);
         agentResponses = response.data.agents;
     } catch (error) {
