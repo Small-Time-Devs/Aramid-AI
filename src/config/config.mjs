@@ -12,7 +12,7 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: false,
+            xAutoPoster: true,
             devMode: false,
             xAutoResponder: false,
             postsPerDay: 100,
@@ -35,10 +35,10 @@ export const config = {
     },
 
     cryptoGlobals: {
-        tradeTokenDevMode: true,
+        tradeTokenDevMode: false,
         tradeTokens: true,
-        tradeTokensInBackground: true,
-        tradeTokensInBackgroundInterval: 10000, // 60 seconds in miliseconds
+        tradeTokensInBackground: false,
+        tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
         maxOpenTrades: 5,
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,

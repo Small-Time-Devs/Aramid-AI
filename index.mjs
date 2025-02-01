@@ -1,4 +1,4 @@
-import * as twitterProfessional from "./src/agent.mjs";
+import * as twitterProfessional from "./src/agents/twitter.mjs";
 import * as autoTraderAgent from "./src/agents/autoTrader.mjs";
 import { config } from './src/config/config.mjs';
 import { checkRateLimit } from './src/utils/helpers.mjs';
@@ -50,19 +50,6 @@ function autoPostToTwitter() {
         // step 1 call the generateAutoPostTweet function from the twitterProfessional module
         const tweet = await twitterProfessional.generateAutoPostTweet();
 
-        /*
-        tweet,
-        comment,
-
-        agetnAnalysisComment,
-        agentTweetPost,
-        agentComment,
-        agetnHashtagsComment,
-        agentInvestmentComment,
-        agentInvestmentDecisionComment,
-        tokenData,
-
-        */
         if (config.twitter.settings.devMode) {
           console.log(`Dev mode enabled, 
             Tweet to be sent!. ${tweet.tweet}

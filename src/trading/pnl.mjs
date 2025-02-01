@@ -40,7 +40,7 @@ export async function startPriceMonitoring(tradeId) {
       }
 
       trackRequest();
-      const tokenData = await fetchTokenPairs('solana', trade.tokenAddress);
+      const tokenData = await fetchTokenPairs(trade.tokenAddress);
       
       if (!tokenData) {
         console.error(`Failed to fetch token data for ${trade.tokenAddress}`);
@@ -110,9 +110,9 @@ function shouldSell(priceChangePercent, trade) {
   
   // Calculate elapsed time based on trade type
   if (trade.tradeType === 'INVEST') {
-    const timeElapsedDays = (currentTime - tradeTime) / (1000 * 60 * 60 * 24); // Convert to days
-    if (timeElapsedDays >= config.cryptoGlobals.investHoldingTimePeriodDays) {
-      console.log(`Selling INVEST trade due to exceeding time limit of ${config.cryptoGlobals.investHoldingTimePeriodDays} days`);
+    const timeElapsedHours = (currentTime - tradeTime) / (1000 * 60 * 60); // Convert to hours
+    if (timeElapsedHours >= config.cryptoGlobals.investHoldingTimePeriodHours) {
+      console.log(`Selling INVEST trade due to exceeding time limit of ${config.cryptoGlobals.investHoldingTimePeriodHours} hours`);
       return true;
     }
   } else if (trade.tradeType === 'QUICK_PROFIT') {
