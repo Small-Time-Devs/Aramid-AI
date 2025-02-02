@@ -37,7 +37,7 @@ export const config = {
     cryptoGlobals: {
         tradeTokenDevMode: false,
         tradeTokens: true,
-        tradeTokensInBackground: true,
+        tradeTokensInBackground: false,
         tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
         maxOpenTrades: 5,
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
@@ -49,7 +49,7 @@ export const config = {
         priorityFee: 200000, // Default priority fee
         referralPublicKey: 'G479Un81UEDZEeHPv23Uy9n2qqgy1CzT7muJVj7PUHJF',
         useJito: false,
-        investHoldingTimePeriodHours: 3,
+        investHoldingTimePeriodHours: 1,
         quickProfitHoldingTimePeriodMinutes: 30,
     },
 
@@ -59,6 +59,7 @@ export const config = {
             coinGecko: 'https://api.coingecko.com/api/v3/simple/price?vs_currencies=usd&ids=',
             dexscreenerTokneProfilesUrl: 'https://api.dexscreener.com/token-profiles/latest/v1',
             dexscreenerTopBoostedUrl: 'https://api.dexscreener.com/token-boosts/top/v1',
+            latestJupTokens: 'https://api.jup.ag/tokens/v1/new',
             raydiumMintIds: 'https://api-v3.raydium.io/mint/ids?mints=',
             raydiumMintPrice: 'https://api-v3.raydium.io/mint/price?mints=',
         },

@@ -149,13 +149,14 @@ export async function getTrade(tradeId) {
     const response = await docClient.send(command);
     
     if (!response.Item) {
-      throw new Error(`No trade found with ID: ${tradeId}`);
+      console.log(`Trade ${tradeId} not found - it may have been completed or removed`);
+      return null;
     }
 
     return response.Item;
   } catch (error) {
-    console.error(`Error getting trade with ID ${tradeId}:`, error);
-    throw error;
+    console.error(`Error accessing trade with ID ${tradeId}:`, error);
+    return null;
   }
 }
 

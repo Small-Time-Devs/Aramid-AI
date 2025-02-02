@@ -23,6 +23,16 @@ export async function fetchLatestBoostedTokens() {
   }
 }
 
+export async function fetchLatestJupTokens() {
+  try {
+    const response = await axios.get(config.apis.crypto.latestJupTokens);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching latest boosted tokens:', error);
+    throw new Error('Failed to fetch latest boosted tokens.');
+  }
+}
+
 // Step 1 - Fetch Token Name and Symbol
 export async function fetchTokenNameAndSymbol(contractAddress) {
   try {
