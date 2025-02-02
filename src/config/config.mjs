@@ -37,7 +37,7 @@ export const config = {
     cryptoGlobals: {
         tradeTokenDevMode: false,
         tradeTokens: true,
-        tradeTokensInBackground: false,
+        tradeTokensInBackground: true,
         tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
         maxOpenTrades: 5,
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',

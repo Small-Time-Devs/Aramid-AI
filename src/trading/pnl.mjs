@@ -34,7 +34,9 @@ export async function startPriceMonitoring(tradeId) {
       }
 
       const trade = await getTrade(tradeId);
+      // If trade is null or not active, stop monitoring
       if (!trade || trade.status !== 'ACTIVE') {
+        console.log(`Stopping monitoring for trade ${tradeId} - trade not found or inactive`);
         activeTrades.delete(tradeId);
         return;
       }
@@ -43,7 +45,7 @@ export async function startPriceMonitoring(tradeId) {
       const tokenData = await fetchTokenPairs(trade.tokenAddress);
       
       if (!tokenData) {
-        console.error(`Failed to fetch token data for ${trade.tokenAddress}`);
+        console.log(`No price data available for ${trade.tokenAddress}, will retry next interval`);
         setTimeout(() => monitor(), MONITOR_INTERVAL);
         return;
       }
@@ -69,8 +71,8 @@ export async function startPriceMonitoring(tradeId) {
 
       setTimeout(() => monitor(), MONITOR_INTERVAL);
     } catch (error) {
-      console.error(`Error monitoring trade ${tradeId}:`, error);
-      setTimeout(() => monitor(), MONITOR_INTERVAL * 2); // Double the interval on error
+      console.log(`Error monitoring trade ${tradeId}, stopping monitoring:`, error.message);
+      activeTrades.delete(tradeId);
     }
   };
 

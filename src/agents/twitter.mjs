@@ -147,14 +147,6 @@ async function pickNewTokenNonBoosted() {
 
 export async function postToTwitter(tweetData, client) {
   try {
-    console.log('Starting postToTwitter function with trade data:', {
-      investmentDecision: tweetData.agentInvestmentDecisionComment,
-      tokenDetails: {
-        name: tweetData.tokenData.tokenName,
-        address: tweetData.tokenData.tokenAddress,
-        priceSOL: tweetData.tokenData.tokenPriceInSol,
-      }
-    });
 
     let tradeResult = null;
 

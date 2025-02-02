@@ -13,7 +13,9 @@ export async function generateTradeAnswer() {
     try {
       // Step 2
         investmentChoice = await pickNewTokenNonBoosted();
+        if (config.cryptoGlobals.tradeTokenDevMode) {
         console.log("Generated Investment Decision:", investmentChoice);
+        }
 
         // Skip if the investment decision is a "Pass"
         if (investmentChoice?.agentInvestmentDecisionComment?.startsWith('Pass')) {
@@ -41,7 +43,10 @@ async function pickNewTokenNonBoosted() {
     try {
       // Step 3
         tokenData = await fetchLatestTokenData();
-        console.log('Token data:', tokenData);
+        if (config.cryptoGlobals.tradeTokenDevMode) {
+          console.log('Token data:', tokenData);
+        }
+
     } catch (error) {
         console.error("Error fetching token data going to try again!", error);
         return await pickNewTokenNonBoosted();
@@ -58,7 +63,9 @@ async function pickNewTokenNonBoosted() {
     let agentResponses;
     try {
         const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/autoTrading-agent-chat', {chain, contractAddress });
-        console.log("Received response from external API:", response.data);
+        if (config.cryptoGlobals.tradeTokenDevMode) {
+          console.log("Received response from external API:", response.data);
+        }
         agentResponses = response.data.agents;
     } catch (error) {
         console.error("Error connecting to external API:", error.response ? error.response.data : error.message);
@@ -75,9 +82,11 @@ async function pickNewTokenNonBoosted() {
     const agentInvestmentComment = investmentAgent.response;
     const agentInvestmentDecisionComment = investmentAgent.decision;
 
-    console.log("Analyst Response:", agetnAnalysisComment);
-    console.log("Investment Response:", agentInvestmentComment);
-    console.log("Investment Decision:", agentInvestmentDecisionComment);
+    if (config.cryptoGlobals.tradeTokenDevMode) {
+      console.log("Analyst Response:", agetnAnalysisComment);
+      console.log("Investment Response:", agentInvestmentComment);
+      console.log("Investment Decision:", agentInvestmentDecisionComment);
+    }
 
     if (!agentInvestmentDecisionComment) {
         console.error("Invalid investment agent decision, generating again.");
@@ -101,14 +110,6 @@ export async function executeTrade(investmentChoice) {
     }
 
     try {
-        console.log('Starting autoTrade function with trade data:', {
-            investmentDecision: investmentChoice.agentInvestmentDecisionComment,
-            tokenDetails: {
-                name: investmentChoice.tokenData.tokenName,
-                address: investmentChoice.tokenData.tokenAddress,
-                priceSOL: investmentChoice.tokenData.tokenPriceInSol
-            }
-        });
 
         let tradeResult = null;
 
@@ -138,15 +139,17 @@ export async function executeTrade(investmentChoice) {
             tradeType = 'INVEST';
           }
 
-          console.log('Extracted trade parameters:', { 
-            targetGain, 
-            targetLoss,
-            tradeType,
-            timeLimit: tradeType === 'INVEST' ? 
-              `${config.cryptoGlobals.investHoldingTimePeriodDays} days` : 
-              `${config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes} minutes`
-          });
-          
+          if (config.cryptoGlobals.tradeTokensInBackground) {
+            console.log('Extracted trade parameters:', { 
+              targetGain, 
+              targetLoss,
+              tradeType,
+              timeLimit: tradeType === 'INVEST' ? 
+                `${config.cryptoGlobals.investHoldingTimePeriodHours} hours` : 
+                `${config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes} minutes`
+            });
+          }
+
           tradeResult = await executeBackgroundTradeBuy(investmentChoice, targetGain, targetLoss, tradeType);
           
           if (!tradeResult.success) {

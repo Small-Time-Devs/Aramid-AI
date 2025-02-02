@@ -52,15 +52,18 @@ export async function executeTradeSell(trade, currentPrice) {
         const priceChangePercent = ((currentPrice - trade.entryPriceSOL) / trade.entryPriceSOL) * 100;
         
         // Get current token data for USD price
-        const tokenData = await fetchTokenPairs('solana', trade.tokenAddress);
+        const tokenData = await fetchTokenPairs(trade.tokenAddress);
+        const currentTokenName = tokenData.tokenName;
+        const currentPriceInSol = tokenData.priceNative;
+        const currentPriceInUSD = tokenData.priceUsd;
         if (!tokenData) {
           throw new Error('Failed to fetch token price data');
         }
 
         // Prepare sell info
         const sellInfo = {
-          exitPriceSOL: currentPrice,
-          exitPriceUSD: tokenData.priceUsd,
+          exitPriceSOL: currentPriceInSol,
+          exitPriceUSD: currentPriceInUSD,
           sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : 0,
           sellPercentageLoss: priceChangePercent < 0 ? Math.abs(priceChangePercent) : 0
         };
@@ -72,7 +75,7 @@ export async function executeTradeSell(trade, currentPrice) {
           tradeId: trade.tradeId,
           tokenAddress: trade.tokenAddress,
           priceChangePercent,
-          exitPrice: currentPrice
+          exitPrice: currentPriceInSol
         });
 
         return { success: true, priceChangePercent };

@@ -3,6 +3,7 @@ import { getWalletDetails, storeTradeInfo, findActiveTradeByToken, updateTradeAm
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { startPriceMonitoring } from './pnl.mjs';
 import { config } from '../config/config.mjs';
+import { fetchTokenPairs } from '../utils/apiUtils.mjs';
 
 export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeType) {
   try {
@@ -100,12 +101,16 @@ export async function executeBackgroundTradeBuy(investmentChoice, targetGain, ta
 
 // Renamed to be more generic since it's used by both tweet and background trades
 async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
+  const currentTokenData = await fetchTokenPairs(data.tokenData.tokenAddress);
+  const currentTokenName = currentTokenData.tokenName;
+  const currentPriceInSol = currentTokenData.priceNative;
+  const currentPriceInUSD = currentTokenData.priceUsd;
   console.log('Starting buy execution with parameters:', {
-    token: data.tokenData.tokenName,
+    token: currentTokenData,
     address: data.tokenData.tokenAddress,
     targetGain,
     targetLoss,
-    priceInSol: data.tokenData.tokenPriceInSol
+    priceInSol: currentPriceInSol
   });
 
   try {
@@ -166,11 +171,11 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
 
     // Create new trade record only after successful purchase
     const tradeId = await storeTradeInfo({
-      tokenName: data.tokenData.tokenName,
+      tokenName: currentTokenName,
       tokenAddress: data.tokenData.tokenAddress,
       amountInvested,
-      entryPriceSOL: data.tokenData.tokenPriceInSol,
-      entryPriceUSD: data.tokenData.tokenPriceInUSD,
+      entryPriceSOL: currentPriceInSol,
+      entryPriceUSD: currentPriceInUSD,
       targetPercentageGain: targetGain,
       targetPercentageLoss: targetLoss,
       tradeType: tradeType,
