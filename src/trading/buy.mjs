@@ -125,14 +125,11 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
 
     const buyRequest = {
       private_key: decryptPrivateKey(walletDetails.solPrivateKey),
-      //public_key: walletDetails.solPublicKey,
-      inputMint: 'So11111111111111111111111111111111111111112',
       outputMint: data.tokenData.tokenAddress,
       amount: config.cryptoGlobals.investmentAmountInSol,
       referralPublicKey: config.cryptoGlobals.referralPublicKey,
     };
 
-    //private_key, inputMint, outputMint, amount, referralPublicKey
     const buyResponse = await axios.post('https://api.smalltimedevs.com/solana/raydium-api/jupiterBuy', buyRequest);
 
     if (!buyResponse.data.success || !buyResponse.data.txid) {
@@ -146,6 +143,7 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
     // Only proceed with DB updates if we have a successful transaction
     if (existingTrade) {
       console.log('Updating existing trade after successful purchase:', {
+        success: true,
         tradeId: existingTrade.tradeId,
         txId: buyResponse.data.txid,
         addingAmount: amountInvested,

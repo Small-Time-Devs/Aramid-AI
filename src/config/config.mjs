@@ -27,6 +27,7 @@ export const config = {
         tradeTokensInBackground: true,
         tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
         maxOpenTrades: 5,
+        solMint: 'So11111111111111111111111111111111111111112',
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
