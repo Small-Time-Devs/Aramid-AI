@@ -19,25 +19,12 @@ export const config = {
             postsPerMonth: 3000,
             timeToReadPostsOnPage: 2,            
         },
-        influencers: {
-            twitterHandles: [
-                'CryptoAudiKing', 
-                'MikeDeanLive', 
-                'xenpub',
-                'KyeGomezB',
-                'REALISWORLDS',
-                'DEGENLABS_CO',
-                'DefiDaddy_',
-                'TheDogeArmy_',
-                'pumpfunhome',
-            ],
-        },
     },
 
     cryptoGlobals: {
         tradeTokenDevMode: false,
-        tradeTokens: true,
-        tradeTokensInBackground: false,
+        tradeTokens: true, // This is for the twitter portion of the bot and the auto-trading portion
+        tradeTokensInBackground: true,
         tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
         maxOpenTrades: 5,
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',

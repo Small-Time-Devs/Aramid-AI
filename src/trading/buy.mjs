@@ -125,16 +125,15 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
 
     const buyRequest = {
       private_key: decryptPrivateKey(walletDetails.solPrivateKey),
-      public_key: walletDetails.solPublicKey,
-      mint: data.tokenData.tokenAddress,
+      //public_key: walletDetails.solPublicKey,
+      inputMint: 'So11111111111111111111111111111111111111112',
+      outputMint: data.tokenData.tokenAddress,
       amount: config.cryptoGlobals.investmentAmountInSol,
       referralPublicKey: config.cryptoGlobals.referralPublicKey,
-      priorityFee: config.cryptoGlobals.priorityFee,
-      slippage: config.cryptoGlobals.buySlippage,
-      useJito: config.cryptoGlobals.useJito
     };
 
-    const buyResponse = await axios.post('https://api.smalltimedevs.com/solana/raydium-api/aramidBuy', buyRequest);
+    //private_key, inputMint, outputMint, amount, referralPublicKey
+    const buyResponse = await axios.post('https://api.smalltimedevs.com/solana/raydium-api/jupiterBuy', buyRequest);
 
     if (!buyResponse.data.success || !buyResponse.data.txid) {
       console.error('Buy order failed or no transaction ID received');

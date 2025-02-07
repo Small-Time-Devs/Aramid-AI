@@ -26,18 +26,20 @@ export async function executeTradeSell(trade, currentPrice) {
 
     const sellRequest = {
       private_key: decryptPrivateKey(walletDetails.solPrivateKey),
-      public_key: walletDetails.solPublicKey,
-      mint: trade.tokenAddress,
+      //public_key: walletDetails.solPublicKey,
+      inputMint: trade.tokenAddress,
+      outputMint: 'So11111111111111111111111111111111111111112',
       amount: sellAmount,
       referralPublicKey: config.cryptoGlobals.referralPublicKey,
-      priorityFee: config.cryptoGlobals.priorityFee,
-      slippage: config.cryptoGlobals.sellSlippage,
-      useJito: config.cryptoGlobals.useJito
+      //priorityFee: config.cryptoGlobals.priorityFee,
+      //slippage: config.cryptoGlobals.sellSlippage,
+      //useJito: config.cryptoGlobals.useJito
     };
 
+    //private_key, inputMint, outputMint, amount, referralPublicKey
     try {
       const sellResponse = await axios.post(
-        'https://api.smalltimedevs.com/solana/raydium-api/aramidSell', 
+        'https://api.smalltimedevs.com/solana/raydium-api/jupiterSell', 
         sellRequest,
         { timeout: 30000 } // Add 30s timeout
       );
