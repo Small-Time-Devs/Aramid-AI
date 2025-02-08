@@ -34,9 +34,15 @@ export async function startPriceMonitoring(tradeId) {
       }
 
       const trade = await getTrade(tradeId);
-      // If trade is null or not active, stop monitoring
-      if (!trade || trade.status !== 'ACTIVE') {
-        console.log(`Stopping monitoring for trade ${tradeId} - trade not found or inactive`);
+      // Only stop monitoring if trade is not found or explicitly marked as not active
+      if (!trade) {
+        console.log(`Trade ${tradeId} not found - it may have been completed or removed`);
+        activeTrades.delete(tradeId);
+        return;
+      }
+
+      if (trade.status !== 'ACTIVE') {
+        console.log(`Trade ${tradeId} is no longer active, stopping monitoring`);
         activeTrades.delete(tradeId);
         return;
       }
@@ -64,15 +70,22 @@ export async function startPriceMonitoring(tradeId) {
       }
 
       if (shouldSell(priceChangePercent, trade)) {
-        await executeTradeSell(trade, currentPrice);
+        const sellResult = await executeTradeSell(trade, currentPrice);
+        if (!sellResult.success) {
+          console.log(`Failed to sell trade ${tradeId}, will retry next interval:`, sellResult.error);
+          setTimeout(() => monitor(), MONITOR_INTERVAL);
+          return;
+        }
+        // Only remove from monitoring if sell was successful
         activeTrades.delete(tradeId);
         return;
       }
 
       setTimeout(() => monitor(), MONITOR_INTERVAL);
     } catch (error) {
-      console.log(`Error monitoring trade ${tradeId}, stopping monitoring:`, error.message);
-      activeTrades.delete(tradeId);
+      console.error(`Error monitoring trade ${tradeId}:`, error.message);
+      // Don't stop monitoring on error, retry next interval
+      setTimeout(() => monitor(), MONITOR_INTERVAL);
     }
   };
 

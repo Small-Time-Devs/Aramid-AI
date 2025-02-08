@@ -12,7 +12,7 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: false,
+            xAutoPoster: true,
             devMode: false,
             xAutoResponder: false,
             useDexScreenerLatestTokens: true,
@@ -39,13 +39,13 @@ export const config = {
         useDexScreenerTopBoosted: false,
         useJupNewTokens: false, // Supports raydium and pump fun tokens. ( Not great luck so far trading pumpfun tokens with jup still a WIP )
 
-        tradeTokensInBackgroundInterval: 10000, // 60 seconds in miliseconds
-        maxOpenTrades: 5,
+        tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
+        maxOpenTrades: 10,
         solMint: 'So11111111111111111111111111111111111111112',
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
-        investmentAmountInSol: 0.05,
+        investmentAmountInSol: 0.01,
         investHoldingTimePeriodHours: 1,
         quickProfitHoldingTimePeriodMinutes: 20,
     },
