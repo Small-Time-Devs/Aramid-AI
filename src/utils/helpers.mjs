@@ -1,5 +1,5 @@
 import { TwitterApi } from 'twitter-api-v2';
-import { fetchLatestTokenProfiles, fetchLatestBoostedTokens, fetchTokenPairs } from './apiUtils.mjs';
+import { fetchLatestTokenProfiles, fetchLatestBoostedTokens, fetchTokenPairs, fetchNewJupTokens } from './apiUtils.mjs';
 import { config } from '../config/config.mjs';
 
 let rateLimitRemaining = null;
@@ -38,6 +38,10 @@ export async function checkRateLimit(client) {
   }
 }
 
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export function updateRateLimitInfo(headers) {
   if (!headers) {
     console.warn('No headers provided to update rate limit info. Assuming no active rate limit.');
@@ -72,48 +76,87 @@ export async function fetchWithTimeout(resource, options = {}) {
 
 export async function fetchLatestTokenData() {
   try {
-    const tokenProfiles = await fetchLatestTokenProfiles();
+    let tokenProfiles = null;
+    let validTokens = [];  // Changed from const to let
+    
+    if (config.cryptoGlobals.useDexScreenerLatestTokens || config.twitter.settings.useDexScreenerLatestTokens) {
+      tokenProfiles = await fetchLatestTokenProfiles();
+      validTokens = tokenProfiles.filter(token => 
+        token.tokenAddress && 
+        token.chainId === "solana"
+      );
+    } else if (config.cryptoGlobals.useDexScreenerTopBoosted || config.twitter.settings.useDexScreenerTopBoosted) {
+      tokenProfiles = await fetchLatestBoostedTokens();
+      validTokens = tokenProfiles.filter(token => 
+        token.tokenAddress && 
+        token.chainId === "solana"
+      );
+    } else if (config.cryptoGlobals.useJupNewTokens || config.twitter.settings.useJupNewTokens) {
+      tokenProfiles = await fetchNewJupTokens();
+      const currentTime = Math.floor(Date.now() / 1000); // Current Unix timestamp
+      const maxTime = currentTime - config.cryptoGlobals.maxPumpFunTime;
+      const minTime = currentTime - config.cryptoGlobals.minPumpFunTime;
+      
+      validTokens = tokenProfiles.filter(token => 
+        token.mint && 
+        token.metadata_updated_at && 
+        parseInt(token.metadata_updated_at) <= minTime &&
+        parseInt(token.metadata_updated_at) >= maxTime
+      );
 
-    const validTokens = tokenProfiles.filter(token => 
-      token.tokenAddress && 
-      token.chainId === "solana"
-    );
+      if (config.cryptoGlobals.tradeTokenDevMode) {
+        console.log('-----------------------------------------------------------------');
+        console.log('Current time:', new Date(currentTime * 1000).toLocaleString());
+        console.log('30 minutes ago:', new Date(maxTime * 1000).toLocaleString());
+        console.log('10 minutes ago:', new Date(minTime * 1000).toLocaleString());
+        console.log('Number of tokens within time window:', validTokens.length);
+        if (validTokens.length > 0) {
+          console.log('Sample token time:', new Date(parseInt(validTokens[0].metadata_updated_at) * 1000).toLocaleString());
+        }
+        console.log('-----------------------------------------------------------------');
+      }
+    }
 
     if (validTokens.length === 0) {
       console.error('No valid Solana tokens found in response going to call fetTokenData again to check if its a fluke!');
     }
 
-    // Select a random Solana token
     const randomToken = validTokens[Math.floor(Math.random() * validTokens.length)];
     if (config.twitter.settings.devMode || config.cryptoGlobals.tradeTokenDevMode) {
       console.log('Random Solana token picked information:', randomToken);
     }
     
-    const tokenAddress = randomToken.tokenAddress;
-    const chainId = randomToken.chainId;    
-
+    let tokenAddress = null;
+    let chainId = null;
+    
+    if (config.cryptoGlobals.useDexScreenerLatestTokens || config.cryptoGlobals.useDexScreenerTopBoosted) {
+      tokenAddress = randomToken.tokenAddress;
+      chainId = randomToken.chainId;
+    } else if (config.cryptoGlobals.useJupNewTokens) {
+      tokenAddress = randomToken.mint;
+      chainId = "solana";
+    }
+    
     const tokenTradeInfo = await fetchTokenPairs(tokenAddress);
     const TokenName = tokenTradeInfo.tokenName;
     const TokenSymbol = tokenTradeInfo.tokenSymbol;
     const TokenPriceUSD = tokenTradeInfo.priceUsd;
     const TokenPriceSOL = tokenTradeInfo.priceNative;
 
-    // Move on to gather more information about the token like the name
     try {
       
-      if (config.twitter.settings.devMode || config.cryptoGlobals.tradeTokenDevMode) {
-        console.log('-----------------------------------------------------------------');
-        console.log('---------------------------DEV DEBUG LOG-------------------------');
-        console.log('Token Name:', TokenName);
-        console.log('Token Symbol:', TokenSymbol);
-        console.log('Chain ID:', chainId);
-        console.log('Token Address:', tokenAddress);
-        console.log('Token Price USD:', TokenPriceUSD);
-        console.log('Token Price SOL:', TokenPriceSOL);
-        console.log('-----------------------------------------------------------------');
+      if (config.twitter.settings.devMode || config.cryptoGlobals.tradeTokenDevMode){
+          console.log('-----------------------------------------------------------------');
+          console.log('---------------------------DEV DEBUG LOG-------------------------');
+          console.log('Token Name:', TokenName);
+          console.log('Token Symbol:', TokenSymbol);
+          console.log('Chain ID:', chainId);
+          console.log('Token Address:', tokenAddress);
+          console.log('Token Price USD:', TokenPriceUSD);
+          console.log('Token Price SOL:', TokenPriceSOL);
+          console.log('-----------------------------------------------------------------');
       }
 
-      // TODO: Left off here on debuging the token data
       return {
         tokenAddress,
         chainId,
@@ -125,10 +168,12 @@ export async function fetchLatestTokenData() {
 
     } catch (error) {
       console.error(`Error processing token name, symbol or price data, going to try fetching again`, error);
+      sleep(1000);
       await fetchLatestTokenData();
     }
   } catch (error) {
     console.error(`Error processing token data from dexscreener, going to try fetching again`, error);
+    sleep(1000);
     await fetchLatestTokenData();
   }
 }

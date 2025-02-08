@@ -12,7 +12,7 @@ export async function generateTradeAnswer() {
     let investmentChoice;
     try {
       // Step 2
-        investmentChoice = await pickNewTokenNonBoosted();
+        investmentChoice = await pickToken();
         if (config.cryptoGlobals.tradeTokenDevMode) {
         console.log("Generated Investment Decision:", investmentChoice);
         }
@@ -38,7 +38,7 @@ export async function generateTradeAnswer() {
     }
 }
 
-async function pickNewTokenNonBoosted() {
+async function pickToken() {
     let tokenData;
     try {
       // Step 3
@@ -49,7 +49,7 @@ async function pickNewTokenNonBoosted() {
 
     } catch (error) {
         console.error("Error fetching token data going to try again!", error);
-        return await pickNewTokenNonBoosted();
+        return await pickToken();
     }
 
     // Step 4
@@ -90,7 +90,7 @@ async function pickNewTokenNonBoosted() {
 
     if (!agentInvestmentDecisionComment) {
         console.error("Invalid investment agent decision, generating again.");
-        return await pickNewTokenNonBoosted();
+        return await pickToken();
     }
 
     const investmentChoice = {

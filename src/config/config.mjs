@@ -12,9 +12,12 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: true,
+            xAutoPoster: false,
             devMode: false,
             xAutoResponder: false,
+            useDexScreenerLatestTokens: true,
+            useDexScreenerTopBoosted: false,
+            useJupNewTokens: false, // Supports raydium and pump fun tokens.
             postsPerDay: 100,
             postsPerMonth: 3000,
             timeToReadPostsOnPage: 2,            
@@ -22,21 +25,27 @@ export const config = {
     },
 
     cryptoGlobals: {
+        // settings to enable or disable trading
         tradeTokenDevMode: false,
         tradeTokens: true, // This is for the twitter portion of the bot and the auto-trading portion
         tradeTokensInBackground: true,
-        tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
+
+        // Trading Times
+        minPumpFunTime: (10 * 60),
+        maxPumpFunTime: (30 * 60),
+
+        // Determine which method to get the token data from
+        useDexScreenerLatestTokens: true,
+        useDexScreenerTopBoosted: false,
+        useJupNewTokens: false, // Supports raydium and pump fun tokens.
+
+        tradeTokensInBackgroundInterval: 10000, // 60 seconds in miliseconds
         maxOpenTrades: 5,
         solMint: 'So11111111111111111111111111111111111111112',
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
         investmentAmountInSol: 0.05,
-        buySlippage: 500, // 5% slippage
-        sellSlippage: 1500, // 15% slippage
-        priorityFee: 200000, // Default priority fee
-        referralPublicKey: 'G479Un81UEDZEeHPv23Uy9n2qqgy1CzT7muJVj7PUHJF',
-        useJito: false,
         investHoldingTimePeriodHours: 1,
         quickProfitHoldingTimePeriodMinutes: 30,
     },

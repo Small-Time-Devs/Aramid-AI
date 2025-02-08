@@ -4,6 +4,23 @@ import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { fetchTokenPairs } from '../utils/apiUtils.mjs';
 import { config } from '../config/config.mjs';
 
+async function retryOperation(operation, maxRetries = 5) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      console.log(`Attempt ${attempt} failed:`, error.message);
+      if (attempt < maxRetries) {
+        // Wait for 5 seconds before retrying
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+  }
+  throw new Error(`Operation failed after ${maxRetries} attempts. Last error: ${lastError.message}`);
+}
+
 export async function executeTradeSell(trade, currentPrice) {
   try {
     // Get wallet details from DynamoDB
@@ -28,15 +45,21 @@ export async function executeTradeSell(trade, currentPrice) {
       private_key: decryptPrivateKey(walletDetails.solPrivateKey),
       inputMint: trade.tokenAddress,
       amount: sellAmount,
-      referralPublicKey: config.cryptoGlobals.referralPublicKey
     };
 
     try {
-      const sellResponse = await axios.post(
-        'https://api.smalltimedevs.com/solana/raydium-api/jupiterSell', 
-        sellRequest,
-        { timeout: 30000 } // Add 30s timeout
-      );
+      // Implement retry logic for the sell operation
+      const sellResponse = await retryOperation(async () => {
+        const response = await axios.post(
+          'https://api.smalltimedevs.com/solana/raydium-api/jupiterSell', 
+          sellRequest,
+          { timeout: 30000 }
+        );
+        if (!response.data.success) {
+          throw new Error('Sell order failed or no transaction ID received');
+        }
+        return response;
+      });
 
       // Log successful response
       console.log('Sell response:', {

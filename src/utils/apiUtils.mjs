@@ -3,6 +3,16 @@ import { config } from '../config/config.mjs';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getMint } from '@solana/spl-token';
 
+export async function fetchNewJupTokens() {
+  try {
+    const response = await axios.get(config.apis.crypto.latestJupTokens);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching new Jupiter tokens:', error);
+    throw new Error('Failed to fetch new Jupiter tokens.');
+  }
+}
+
 export async function fetchLatestTokenProfiles() {
   try {
     const response = await axios.get(config.apis.crypto.dexscreenerTokneProfilesUrl);
@@ -66,7 +76,12 @@ export async function fetchTokenPairs(tokenAddress) {
     const tokenPairs = response.data;
 
     // Filter to exclude the dexID passed and the quote token symbol
-    const filteredPair = tokenPairs.find(pair => pair.dexId == 'raydium' && pair.quoteToken.symbol == 'SOL');
+    let filteredPair = null;
+    if (config.cryptoGlobals.useDexScreenerLatestTokens || config.cryptoGlobals.useDexScreenerTopBoosted) {
+      filteredPair = tokenPairs.find(pair => pair.dexId == 'raydium' && pair.quoteToken.symbol == 'SOL');
+    }else if (config.cryptoGlobals.useJupNewTokens) {
+      filteredPair = tokenPairs.find(pair => pair.dexId == 'raydium' || pair.dexId == 'pumpfun' && pair.quoteToken.symbol == 'SOL');
+    }
 
     if (!filteredPair) {
       throw new Error("No valid token pairs found");

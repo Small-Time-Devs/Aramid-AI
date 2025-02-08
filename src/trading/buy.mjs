@@ -99,6 +99,23 @@ export async function executeBackgroundTradeBuy(investmentChoice, targetGain, ta
   }
 }
 
+async function retryOperation(operation, maxRetries = 5) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      console.log(`Attempt ${attempt} failed:`, error.message);
+      if (attempt < maxRetries) {
+        // Wait for 2 seconds before retrying
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+  }
+  throw new Error(`Operation failed after ${maxRetries} attempts. Last error: ${lastError.message}`);
+}
+
 // Renamed to be more generic since it's used by both tweet and background trades
 async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
   const currentTokenData = await fetchTokenPairs(data.tokenData.tokenAddress);
@@ -127,15 +144,16 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
       private_key: decryptPrivateKey(walletDetails.solPrivateKey),
       outputMint: data.tokenData.tokenAddress,
       amount: config.cryptoGlobals.investmentAmountInSol,
-      referralPublicKey: config.cryptoGlobals.referralPublicKey,
     };
 
-    const buyResponse = await axios.post('https://api.smalltimedevs.com/solana/raydium-api/jupiterBuy', buyRequest);
-
-    if (!buyResponse.data.success || !buyResponse.data.txid) {
-      console.error('Buy order failed or no transaction ID received');
-      return { success: false, error: 'Buy order failed' };
-    }
+    // Implement retry logic for the buy operation
+    const buyResponse = await retryOperation(async () => {
+      const response = await axios.post('https://api.smalltimedevs.com/solana/raydium-api/jupiterBuy', buyRequest);
+      if (!response.data.success || !response.data.txid) {
+        throw new Error('Buy order failed or no transaction ID received');
+      }
+      return response;
+    });
 
     const tokensPurchased = parseFloat(buyResponse.data.tokensPurchased);
     const amountInvested = parseFloat(buyRequest.amount);
