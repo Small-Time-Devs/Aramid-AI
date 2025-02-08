@@ -311,3 +311,37 @@ export async function moveTradeToPastTrades(trade, sellInfo) {
     throw error;
   }
 }
+
+export async function checkPastTrades(tokenAddress) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-PastTrades',
+      FilterExpression: 'tokenAddress = :tokenAddress',
+      ExpressionAttributeValues: {
+        ':tokenAddress': tokenAddress
+      }
+    };
+
+    const command = new ScanCommand(params);
+    const response = await docClient.send(command);
+    
+    if (response.Items && response.Items.length > 0) {
+      // Check if the most recent trade with this token was within the last 24 hours
+      const mostRecentTrade = response.Items.reduce((latest, trade) => {
+        return (!latest || trade.timestamp > latest.timestamp) ? trade : latest;
+      });
+      
+      const tradeTime = new Date(mostRecentTrade.timestamp).getTime();
+      const currentTime = new Date().getTime();
+      const hoursSinceLastTrade = (currentTime - tradeTime) / (1000 * 60 * 60);
+      
+      // Return true if we've traded this token in the last 24 hours
+      return hoursSinceLastTrade < 24;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error checking past trades:', error);
+    return false;
+  }
+}

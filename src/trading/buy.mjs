@@ -1,9 +1,10 @@
 import axios from 'axios';
+import { Connection } from "@solana/web3.js";
 import { getWalletDetails, storeTradeInfo, findActiveTradeByToken, updateTradeAmounts } from '../db/dynamo.mjs';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { startPriceMonitoring } from './pnl.mjs';
 import { config } from '../config/config.mjs';
-import { fetchTokenPairs } from '../utils/apiUtils.mjs';
+import { fetchTokenPairs, fetchTokenNameAndSymbol } from '../utils/apiUtils.mjs';
 
 export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeType) {
   try {
@@ -118,12 +119,15 @@ async function retryOperation(operation, maxRetries = 5) {
 
 // Renamed to be more generic since it's used by both tweet and background trades
 async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
-  const currentTokenData = await fetchTokenPairs(data.tokenData.tokenAddress);
+  const currentTokenData = await fetchTokenNameAndSymbol(data.tokenData.tokenAddress);
+  const currentTokenDataPrices = await fetchTokenPairs(data.tokenData.tokenAddress);
   const currentTokenName = currentTokenData.tokenName;
-  const currentPriceInSol = currentTokenData.priceNative;
-  const currentPriceInUSD = currentTokenData.priceUsd;
+  const currentTokenDecimals = currentTokenData.decimals;
+  const currentPriceInSol = currentTokenDataPrices.priceNative;
+  const currentPriceInUSD = currentTokenDataPrices.priceUsd;
   console.log('Starting buy execution with parameters:', {
-    token: currentTokenData,
+    token: currentTokenName,
+    decimals: currentTokenDecimals,
     address: data.tokenData.tokenAddress,
     targetGain,
     targetLoss,
@@ -183,6 +187,10 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
         isUpdate: true
       };
     }
+    
+    // Convert the amount correctly based on decimals
+    // this needs to be converted back into token format instead of decimal format
+    const actualPurcahseAmount = parseFloat(tokensPurchased) / Math.pow(10, currentTokenDecimals);
 
     // Create new trade record only after successful purchase
     const tradeId = await storeTradeInfo({
@@ -194,7 +202,7 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
       targetPercentageGain: targetGain,
       targetPercentageLoss: targetLoss,
       tradeType: tradeType,
-      tokensReceived: tokensPurchased,
+      tokensReceived: actualPurcahseAmount,
     });
 
     startPriceMonitoring(tradeId);

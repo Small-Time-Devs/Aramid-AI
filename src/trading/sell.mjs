@@ -30,14 +30,13 @@ export async function executeTradeSell(trade, currentPrice) {
       throw new Error('Wallet details not found or private key missing');
     }
 
-    // For safty, sell 0.0001 less than the received amount so we dont have any weird 
-    // issues with trying to sell the full bag amount
-    const sellAmount = trade.tokensReceived - 0.0001;
+    // Calculate sell amount (slightly less than total to ensure success)
+    const sellAmount = Math.max(0, trade.tokensReceived - 0.001);
     
     // Log the token balance before attempting sell
     console.log('Attempting to sell:', {
       tokenAddress: trade.tokenAddress,
-      rawAmount: sellAmount,
+      amount: sellAmount,
       currentPrice,
       tradeType: trade.tradeType
     });
@@ -45,7 +44,7 @@ export async function executeTradeSell(trade, currentPrice) {
     const sellRequest = {
       private_key: decryptPrivateKey(walletDetails.solPrivateKey),
       inputMint: trade.tokenAddress,
-      amount: sellAmount, // Raw token amount without decimal conversion
+      amount: sellAmount,
     };
 
     try {
