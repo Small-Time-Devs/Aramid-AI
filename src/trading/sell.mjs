@@ -3,6 +3,7 @@ import { getWalletDetails, updateTradeWithSellInfo } from '../db/dynamo.mjs';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { fetchTokenPairs } from '../utils/apiUtils.mjs';
 import { config } from '../config/config.mjs';
+import { checkTokenBalance } from '../utils/solanaUtils.mjs';
 
 async function retryOperation(operation, maxRetries = 5) {
   let lastError;
@@ -30,15 +31,27 @@ export async function executeTradeSell(trade, currentPrice) {
       throw new Error('Wallet details not found or private key missing');
     }
 
-    // Calculate sell amount (slightly less than total to ensure success)
-    const sellAmount = Math.max(0, trade.tokensReceived - 0.001);
+    // Check if we still own the tokens before attempting to sell
+    const tokenBalance = await checkTokenBalance(
+      trade.tokenAddress,
+      config.cryptoGlobals.publicKey
+    );
+
+    if (tokenBalance <= 0) {
+      console.log('No tokens found in wallet, removing trade from monitoring');
+      return { success: false, error: 'No tokens found in wallet' };
+    }
+
+    // Calculate sell amount based on actual token balance
+    const sellAmount = Math.min(trade.tokensReceived, tokenBalance);
     
     // Log the token balance before attempting sell
     console.log('Attempting to sell:', {
       tokenAddress: trade.tokenAddress,
-      amount: sellAmount,
+      sellAmount,
       currentPrice,
-      tradeType: trade.tradeType
+      tradeType: trade.tradeType,
+      actualBalance: tokenBalance
     });
 
     const sellRequest = {

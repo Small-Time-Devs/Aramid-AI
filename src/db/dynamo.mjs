@@ -285,7 +285,8 @@ export async function moveTradeToPastTrades(trade, sellInfo) {
         exitPriceUSD: sellInfo.exitPriceUSD,
         sellPercentageGain: sellInfo.sellPercentageGain,
         sellPercentageLoss: sellInfo.sellPercentageLoss,
-        status: 'COMPLETED',
+        status: sellInfo.status || 'COMPLETED',
+        reason: sellInfo.reason || null,
         completedAt: new Date().toISOString()
       }
     };

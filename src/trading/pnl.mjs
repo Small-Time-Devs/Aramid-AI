@@ -1,8 +1,9 @@
-import { getTrade, getActiveTrades } from '../db/dynamo.mjs';
+import { getTrade, getActiveTrades, moveTradeToPastTrades } from '../db/dynamo.mjs';
 import { executeTradeSell } from './sell.mjs';
 import { fetchTokenPairs } from '../utils/apiUtils.mjs';
 import { config } from '../config/config.mjs';
 import { config as dotEnvConfig} from 'dotenv';
+import { checkTokenBalance } from '../utils/solanaUtils.mjs';
 
 const activeTrades = new Map();
 const MONITOR_INTERVAL = 5000; // 5 seconds
@@ -43,6 +44,47 @@ export async function startPriceMonitoring(tradeId) {
 
       if (trade.status !== 'ACTIVE') {
         console.log(`Trade ${tradeId} is no longer active, stopping monitoring`);
+        activeTrades.delete(tradeId);
+        return;
+      }
+
+      // Check token balance before proceeding
+      let tokenBalance;
+      try {
+        tokenBalance = await checkTokenBalance(
+          trade.tokenAddress, 
+          config.cryptoGlobals.publicKey
+        );
+      } catch (balanceError) {
+        if (balanceError.message?.includes('No token account found')) {
+          console.log(`No token account found for ${trade.tokenAddress}, archiving trade...`);
+          await moveTradeToPastTrades(trade, {
+            exitPriceSOL: 0,
+            exitPriceUSD: 0,
+            sellPercentageGain: 0,
+            sellPercentageLoss: 0,
+            status: 'EXPIRED',
+            reason: 'No token account found - tokens may have been transferred out'
+          });
+          activeTrades.delete(tradeId);
+          return;
+        }
+        throw balanceError;
+      }
+
+      // If balance is 0 or less than 1 token, archive the trade
+      if (tokenBalance < 1) {
+        console.log(`Trade ${tradeId} has insufficient balance (${tokenBalance}), archiving...`);
+        const sellInfo = {
+          exitPriceSOL: 0,
+          exitPriceUSD: 0,
+          sellPercentageGain: 0,
+          sellPercentageLoss: 0,
+          status: 'EXPIRED',
+          reason: `Insufficient balance: ${tokenBalance}`
+        };
+
+        await moveTradeToPastTrades(trade, sellInfo);
         activeTrades.delete(tradeId);
         return;
       }
