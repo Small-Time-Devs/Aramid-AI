@@ -103,3 +103,16 @@ export async function fetchTokenPairs(tokenAddress) {
     throw new Error(`Failed to fetch token pairs for ${tokenAddress}`);
   }
 }
+//chainID, tokenAddress, entryPrice, targetGain, targetLoss
+export async function autoTradingAdvice(chainId, tokenAddress, entryPrice, targetGain, targetLoss) {
+  try {
+    const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/autoTrading-agent-advice', { chain: chainId, contractAddress: tokenAddress, entryPriceSOL: entryPrice, targetPercentageGain: targetGain, targetPercentageLoss: targetLoss });
+    if (config.cryptoGlobals.tradeTokenDevMode) {
+      console.log("Received response from external API:", response.data);
+    }
+    return response.data.agents;
+  } catch (error) {
+    console.error("Error connecting to external API:", error.response ? error.response.data : error.message);
+    throw new Error("Failed to connect to external API.");
+  }
+}

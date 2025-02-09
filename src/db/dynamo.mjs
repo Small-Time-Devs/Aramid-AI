@@ -187,7 +187,7 @@ export async function getActiveTrades() {
 // Get wallet details
 export async function getWalletDetails() {
     console.log('Getting wallet details');
-    console.log('Public key:', config.cryptoGlobals.publicKey);
+    //console.log('Public key:', config.cryptoGlobals.publicKey);
   try {
     const params = {
       TableName: 'AramidAI-X-Wallets',
@@ -271,6 +271,37 @@ export async function updateTradeAmounts(tradeId, additionalAmount, additionalTo
   } catch (error) {
     console.error('Error updating trade amounts:', error);
     throw error;
+  }
+}
+
+export async function updateTradeTargets(tradeId, { targetPercentageGain, targetPercentageLoss}) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      Key: { tradeId },
+      UpdateExpression: 'SET targetPercentageGain = :gain, targetPercentageLoss = :loss',
+      ExpressionAttributeValues: {
+        ':gain': targetPercentageGain,
+        ':loss': targetPercentageLoss
+      },
+      ReturnValues: 'ALL_NEW'
+    };
+
+    // Log update attempt
+    console.log('Updating trade percentages:', {
+      tradeId,
+      targetPercentageGain,
+      targetPercentageLoss
+    });
+
+    const command = new UpdateCommand(params);
+    const response = await docClient.send(command);
+    
+    console.log(`Trade ${tradeId} updated successfully:`, response.Attributes);
+    return { success: true, attributes: response.Attributes };
+  } catch (error) {
+    console.error(`Error updating trade ${tradeId} amounts:`, error);
+    throw { success: true, error: error.message };
   }
 }
 
