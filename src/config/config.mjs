@@ -31,7 +31,7 @@ export const config = {
         tradeTokensInBackground: true, // This is for the auto-trading portion only
 
         // Ask AI for advice
-        askForAdviceFromAI: false,
+        askForAdviceFromAI: true,
 
         // Trading Times
         minPumpFunTime: (10 * 60), // 10 minutes in seconds
@@ -44,7 +44,7 @@ export const config = {
         useJupNewTokens: false, // Supports raydium and pump fun tokens. ( Not great luck so far trading pumpfun tokens with jup still a WIP )
 
         tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
-        maxOpenTrades: 1,
+        maxOpenTrades: 2,
         solMint: 'So11111111111111111111111111111111111111112',
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
