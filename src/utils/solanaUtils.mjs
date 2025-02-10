@@ -5,6 +5,7 @@ import {
   Keypair,
   sendAndConfirmTransaction 
 } from '@solana/web3.js';
+import bs58 from 'bs58';  // Add this import
 import { 
   createCloseAccountInstruction, 
   createBurnInstruction,
@@ -17,10 +18,14 @@ function createKeypairFromPrivateKey(privateKeyString) {
   try {
     // Handle base58 encoded private key
     if (!privateKeyString.includes(',')) {
-      // If it's a base58 string, decode it
-      return Keypair.fromSecretKey(
-        Buffer.from(privateKeyString, 'base58')
-      );
+      try {
+        // Decode base58 string using bs58
+        const decoded = bs58.decode(privateKeyString);
+        return Keypair.fromSecretKey(decoded);
+      } catch (error) {
+        console.error('Error decoding base58 private key:', error);
+        throw error;
+      }
     }
     
     // Handle comma-separated number array
