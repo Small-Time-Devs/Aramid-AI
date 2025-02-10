@@ -3,7 +3,11 @@ import { getWalletDetails, updateTradeWithSellInfo } from '../db/dynamo.mjs';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { fetchTokenPairs } from '../utils/apiUtils.mjs';
 import { config } from '../config/config.mjs';
-import { checkTokenBalance } from '../utils/solanaUtils.mjs';
+import { checkTokenBalance, closeTokenAccount } from '../utils/solanaUtils.mjs';
+
+const MAX_SELL_ATTEMPTS = 3;
+const CONFIRMATION_WAIT_TIME = 15000; // 15 seconds
+const DUST_THRESHOLD = 1; // Minimum tokens to consider as dust
 
 async function retryOperation(operation, maxRetries = 5) {
   let lastError;
@@ -22,7 +26,59 @@ async function retryOperation(operation, maxRetries = 5) {
   throw new Error(`Operation failed after ${maxRetries} attempts. Last error: ${lastError.message}`);
 }
 
-export async function executeTradeSell(trade, currentPrice) {
+async function verifyAndCleanupSale(trade, tokenAddress, ownerPublicKey, privateKeyString) {
+  try {
+    // Wait for transaction to land
+    await new Promise(resolve => setTimeout(resolve, CONFIRMATION_WAIT_TIME));
+    
+    // Check remaining balance
+    const remainingBalance = await checkTokenBalance(tokenAddress, ownerPublicKey);
+    
+    if (remainingBalance > DUST_THRESHOLD) {
+      console.log(`Detected ${remainingBalance} tokens remaining after sale, attempting cleanup...`);
+      
+      // Try to sell remaining tokens
+      for (let attempt = 1; attempt <= MAX_SELL_ATTEMPTS; attempt++) {
+        console.log(`Attempt ${attempt} to sell remaining tokens...`);
+        
+        const sellResult = await executeTradeSell(trade, null, true); // true flag for cleanup
+        if (sellResult.success) {
+          await new Promise(resolve => setTimeout(resolve, CONFIRMATION_WAIT_TIME));
+          const finalBalance = await checkTokenBalance(tokenAddress, ownerPublicKey);
+          
+          if (finalBalance <= DUST_THRESHOLD) {
+            break;
+          }
+        }
+        
+        if (attempt === MAX_SELL_ATTEMPTS) {
+          console.log('Failed to sell remaining tokens, will proceed to burn them');
+        }
+      }
+    }
+
+    // Close token account with proper private key handling
+    console.log('Attempting to close token account...');
+    const closed = await closeTokenAccount(
+      tokenAddress, 
+      ownerPublicKey, 
+      privateKeyString // Pass the private key string directly
+    );
+    
+    if (closed) {
+      console.log('Successfully closed token account and reclaimed rent');
+    } else {
+      console.log('Failed to close token account');
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error in verification and cleanup:', error);
+    return false;
+  }
+}
+
+export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
   try {
     // Get wallet details from DynamoDB
     const walletDetails = await getWalletDetails(config.twitter.botUserId);
@@ -42,8 +98,8 @@ export async function executeTradeSell(trade, currentPrice) {
       return { success: false, error: 'No tokens found in wallet' };
     }
 
-    // Calculate sell amount based on actual token balance
-    const sellAmount = Math.min(trade.tokensReceived, tokenBalance);
+    // Always sell entire balance
+    const sellAmount = tokenBalance;
     
     // Log the token balance before attempting sell
     console.log('Attempting to sell:', {
@@ -81,6 +137,16 @@ export async function executeTradeSell(trade, currentPrice) {
       });
 
       if (sellResponse.data.success) {
+        // Only proceed with cleanup if not already in cleanup mode
+        if (!isCleanup) {
+          await verifyAndCleanupSale(
+            trade,
+            trade.tokenAddress,
+            config.cryptoGlobals.publicKey,
+            decryptPrivateKey(walletDetails.solPrivateKey)
+          );
+        }
+
         const priceChangePercent = ((currentPrice - trade.entryPriceSOL) / trade.entryPriceSOL) * 100;
         
         // Get current token data for USD price

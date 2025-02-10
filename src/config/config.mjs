@@ -12,7 +12,7 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: true,
+            xAutoPoster: false,
             devMode: false,
             xAutoResponder: false,
             useDexScreenerLatestTokens: true,
@@ -30,7 +30,7 @@ export const config = {
         tradeTokens: true, // This is for the twitter portion of the bot and the auto-trading portion
         tradeTokensInBackground: true, // This is for the auto-trading portion only
 
-        // Ask AI for advice
+        // Ask AI for advice on open trades
         askForAdviceFromAI: true,
 
         // Trading Times
@@ -43,13 +43,13 @@ export const config = {
 
         useJupNewTokens: false, // Supports raydium and pump fun tokens. ( Not great luck so far trading pumpfun tokens with jup still a WIP )
 
-        tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
-        maxOpenTrades: 2,
+        tradeTokensInBackgroundInterval: 10000, // 60 seconds in miliseconds
+        maxOpenTrades: 1,
         solMint: 'So11111111111111111111111111111111111111112',
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
-        investmentAmountInSol: 0.01,
+        investmentAmountInSol: 0.025,
         investHoldingTimePeriodHours: 1,
         quickProfitHoldingTimePeriodMinutes: 20,
     },

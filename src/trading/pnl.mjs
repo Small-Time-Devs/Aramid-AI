@@ -16,6 +16,9 @@ const activeTrades = new Map();
 const MONITOR_INTERVAL = 5000; // 5 seconds
 const MAX_REQUESTS_PER_MINUTE = 300;
 const requestTimes = [];
+const PRICE_CHECK_INTERVAL = 5000; // Check prices every 5 seconds
+const AI_ADVICE_INTERVAL = 60000; // Get AI advice every 60 seconds
+const lastAICheckTimes = new Map(); // Track last AI check time per trade
 
 function canMakeRequest() {
   const now = Date.now();
@@ -39,7 +42,7 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
     try {
       if (!canMakeRequest()) {
         console.log('Rate limit approaching, waiting...');
-        setTimeout(() => monitor(), 1000); // Retry after 1 second if rate limited
+        setTimeout(() => monitor(), MONITOR_INTERVAL); // Retry after 1 second if rate limited
         return;
       }
 
@@ -50,18 +53,28 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
         return;
       }
 
-      // Check balance and fetch price data
+      // Check balance and handle zero balance scenario
       const tokenBalance = await checkTokenBalance(trade.tokenAddress, config.cryptoGlobals.publicKey);
       if (tokenBalance < 1) {
-        console.log(`No balance found for trade ${tradeId}, will retry...`);
-        setTimeout(() => monitor(), 5000); // Retry every 5 seconds
+        console.log(`Trade ${tradeId} has no balance, archiving trade...`);
+        const sellInfo = {
+          exitPriceSOL: 0,
+          exitPriceUSD: 0,
+          sellPercentageGain: 0,
+          sellPercentageLoss: 0,
+          status: 'COMPLETED',
+          reason: 'Token Balance is Dust archiving trade'
+        };
+        
+        await moveTradeToPastTrades(trade, sellInfo);
+        activeTrades.delete(tradeId);
         return;
       }
 
       trackRequest();
       const tokenData = await fetchTokenPairs(trade.tokenAddress);
       if (!tokenData) {
-        setTimeout(() => monitor(), 5000);
+        setTimeout(() => monitor(), PRICE_CHECK_INTERVAL);
         return;
       }
 
@@ -102,32 +115,48 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
 
       // Get AI advice on current position
       if (config.cryptoGlobals.askForAdviceFromAI) {
-        const advice = await autoTradingAdvice(
-          'solana',
-          trade.tokenAddress,
-          trade.entryPriceSOL,
-          trade.targetPercentageGain,
-          trade.targetPercentageLoss
-        );
-        
-        console.log(`AI advice for ${tradeId}: ${advice} CA: ${trade.tokenAddress} Entry Price: ${trade.entryPriceSOL} Target Gain: ${trade.targetPercentageGain} Target Loss: ${trade.targetPercentageLoss}`);
+        const lastCheckTime = lastAICheckTimes.get(tradeId) || 0;
+        const timeSinceLastCheck = currentTime - lastCheckTime;
 
-        // Handle advice
-        if (advice.startsWith('Sell Now')) {
-          await executeSellOrder(trade, currentPrice);
-          return;
-        } else if (advice.startsWith('Adjust Trade')) {
-          await handleTradeAdjustment(trade, advice);
+        if (timeSinceLastCheck >= AI_ADVICE_INTERVAL) {
+          const advice = await autoTradingAdvice(
+            'solana',
+            trade.tokenAddress,
+            trade.entryPriceSOL,
+            trade.targetPercentageGain,
+            trade.targetPercentageLoss
+          );
+          
+          lastAICheckTimes.set(tradeId, currentTime);
+          console.log(`AI advice for ${tradeId}: ${advice} CA: ${trade.tokenAddress} Entry Price: ${trade.entryPriceSOL} Target Gain: ${trade.targetPercentageGain} Target Loss: ${trade.targetPercentageLoss}`);
+
+          // Handle advice
+          if (advice.startsWith('Sell Now')) {
+            await executeSellOrder(trade, currentPrice);
+            return;
+          } else if (advice.startsWith('Adjust Trade')) {
+            await handleTradeAdjustment(trade, advice);
+          }
         }
       }
 
       // Continue monitoring regardless of result
-      setTimeout(() => monitor(), 5000);
+      setTimeout(() => monitor(), PRICE_CHECK_INTERVAL);
     } catch (error) {
       console.error(`Error monitoring trade ${tradeId}:`, error.message);
-      setTimeout(() => monitor(), 5000); // Keep monitoring even after errors
+      setTimeout(() => monitor(), PRICE_CHECK_INTERVAL); // Keep monitoring even after errors
     }
   };
+
+  async function executeSellOrder(trade, currentPrice) {
+    const sellResult = await executeTradeSell(trade, currentPrice);
+    if (!sellResult.success) {
+      console.log(`Failed to sell trade ${trade.tradeId}, will retry...`);
+      setTimeout(() => monitor(), 5000); // Now monitor is in scope
+      return;
+    }
+    activeTrades.delete(trade.tradeId);
+  }
 
   activeTrades.set(tradeId, true);
   monitor(); // Start the monitoring loop
@@ -142,16 +171,6 @@ function shouldSellBasedOnTime(trade, currentTime, tradeTime) {
     return (currentTime - tradeTime) >= (config.cryptoGlobals.quickProfitHoldingTimePeriodMinutes * 60 * 1000);
   }
   return false;
-}
-
-async function executeSellOrder(trade, currentPrice) {
-  const sellResult = await executeTradeSell(trade, currentPrice);
-  if (!sellResult.success) {
-    console.log(`Failed to sell trade ${trade.tradeId}, will retry...`);
-    setTimeout(() => monitor(), 5000);
-    return;
-  }
-  activeTrades.delete(trade.tradeId);
 }
 
 export async function initializeTradeMonitoring() {
