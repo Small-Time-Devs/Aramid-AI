@@ -83,15 +83,27 @@ export async function sendTradeNotification(tradeData, type = 'BUY') {
       ];
       embed.fields.push(...fields);
     } else if (type === 'SELL') {
+      // Validate and sanitize numeric values
+      const sanitizeNumber = (num) => {
+        if (typeof num === 'string') num = parseFloat(num);
+        return typeof num === 'number' && !isNaN(num) ? num : 0;
+      };
+
+      // Ensure all numeric fields are properly formatted
+      const exitPriceSOL = sanitizeNumber(tradeData.exitPriceSOL);
+      const sellPercentageGain = sanitizeNumber(tradeData.sellPercentageGain);
+      const sellPercentageLoss = sanitizeNumber(tradeData.sellPercentageLoss);
+
+      // Update the sell-specific fields with proper number handling
       embed.fields.push(
         {
           name: 'Exit Price (SOL)',
-          value: tradeData.exitPriceSOL.toFixed(9),
+          value: exitPriceSOL.toFixed(9),
           inline: true
         },
         {
           name: 'Profit/Loss %',
-          value: `${tradeData.sellPercentageGain ? '+' + tradeData.sellPercentageGain.toFixed(2) : tradeData.sellPercentageLoss.toFixed(2)}%`,
+          value: `${sellPercentageGain ? '+' + sellPercentageGain.toFixed(2) : '-' + sellPercentageLoss.toFixed(2)}%`,
           inline: true
         },
         {

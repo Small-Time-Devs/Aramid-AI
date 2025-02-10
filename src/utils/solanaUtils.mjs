@@ -92,10 +92,10 @@ export async function closeTokenAccount(tokenMint, owner, privateKeyString) {
       firstFewChars: privateKeyString.substring(0, 10) + '...'
     });
 
-    // Enhanced connection with higher commitment level
+    // Enhanced connection with shorter timeout and finalized commitment
     const connection = new Connection(config.cryptoGlobals.rpcNode, {
-      commitment: 'confirmed',
-      confirmTransactionInitialTimeout: 120000, // 2 minute timeout
+      commitment: 'finalized',
+      confirmTransactionInitialTimeout: 60000, // 1 minute timeout
       wsEndpoint: config.cryptoGlobals.rpcNode.replace('http', 'ws')
     });
 
@@ -124,7 +124,7 @@ export async function closeTokenAccount(tokenMint, owner, privateKeyString) {
 
     if (tokenAccounts.value.length === 0) {
       console.log('No token account found to close');
-      return false;
+      return true; // Return true since there's nothing to close
     }
 
     const tokenAccount = tokenAccounts.value[0].pubkey;
@@ -142,25 +142,17 @@ export async function closeTokenAccount(tokenMint, owner, privateKeyString) {
       
       const burnTx = new Transaction().add(burnIx);
       
-      // Get fresh blockhash and send burn transaction with retry
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        try {
-          const latestBlockhash = await connection.getLatestBlockhash('finalized');
-          burnTx.recentBlockhash = latestBlockhash.blockhash;
-          burnTx.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
-          burnTx.feePayer = ownerKeypair.publicKey;
-          
-          await sendAndConfirmTransaction(connection, burnTx, [ownerKeypair], {
-            skipPreflight: false,
-            preflightCommitment: 'confirmed',
-            commitment: 'confirmed'
-          });
-          break;
-        } catch (err) {
-          if (attempt === 3) throw err;
-          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
-        }
-      }
+      // Get latest blockhash and send burn transaction
+      const latestBlockhash = await connection.getLatestBlockhash('finalized');
+      burnTx.recentBlockhash = latestBlockhash.blockhash;
+      burnTx.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
+      burnTx.feePayer = ownerKeypair.publicKey;
+      
+      await sendAndConfirmTransaction(connection, burnTx, [ownerKeypair], {
+        skipPreflight: false,
+        preflightCommitment: 'finalized',
+        commitment: 'finalized'
+      });
     }
 
     // Create close account transaction
@@ -172,20 +164,16 @@ export async function closeTokenAccount(tokenMint, owner, privateKeyString) {
 
     const closeTx = new Transaction().add(closeIx);
 
-    // Implement exponential backoff retry logic
-    const maxRetries = 5;
+    // Implement shorter retry logic
+    const maxRetries = 3;
     let lastError;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        // Get fresh blockhash for each attempt
         const latestBlockhash = await connection.getLatestBlockhash('finalized');
         closeTx.recentBlockhash = latestBlockhash.blockhash;
         closeTx.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
         closeTx.feePayer = ownerKeypair.publicKey;
-
-        // Calculate deadline for confirmation
-        const deadline = Date.now() + 60000; // 60 second deadline
 
         const signature = await sendAndConfirmTransaction(
           connection, 
@@ -193,31 +181,19 @@ export async function closeTokenAccount(tokenMint, owner, privateKeyString) {
           [ownerKeypair],
           {
             skipPreflight: false,
-            preflightCommitment: 'confirmed',
-            commitment: 'confirmed',
-            maxRetries: 3
+            preflightCommitment: 'finalized',
+            commitment: 'finalized'
           }
         );
 
-        // Actively monitor transaction status
-        while (Date.now() < deadline) {
-          const status = await connection.getSignatureStatus(signature);
-          if (status?.value?.confirmationStatus === 'confirmed') {
-            console.log('Token account closed successfully with signature:', signature);
-            return true;
-          }
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-
-        throw new Error('Transaction confirmation timeout');
+        console.log('Token account closed successfully with signature:', signature);
+        return true;
       } catch (err) {
         lastError = err;
         console.log(`Attempt ${attempt}/${maxRetries} failed:`, err.message);
         
         if (attempt < maxRetries) {
-          // Exponential backoff
-          const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise(resolve => setTimeout(resolve, 2000));
           continue;
         }
       }
