@@ -5,6 +5,7 @@ import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { startPriceMonitoring } from './pnl.mjs';
 import { config } from '../config/config.mjs';
 import { fetchTokenPairs, fetchTokenNameAndSymbol } from '../utils/apiUtils.mjs';
+import { checkSolanaBalance } from '../utils/solanaUtils.mjs';
 
 export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeType) {
   try {
@@ -117,6 +118,30 @@ async function retryOperation(operation, maxRetries = 5) {
   throw new Error(`Operation failed after ${maxRetries} attempts. Last error: ${lastError.message}`);
 }
 
+// Add new helper function
+async function checkWalletBalanceForTrading(publicKey) {
+  try {
+    const currentBalance = await checkSolanaBalance(publicKey);
+    const investmentAmount = config.cryptoGlobals.investmentAmountInSol;
+    const minThreshold = config.cryptoGlobals.walletThreshold;
+    
+    if (currentBalance < minThreshold) {
+      console.log(`Insufficient wallet balance (${currentBalance} SOL) is below minimum threshold of ${minThreshold} SOL`);
+      return false;
+    }
+    
+    if ((currentBalance - investmentAmount) < minThreshold) {
+      console.log(`Investment of ${investmentAmount} SOL would put wallet balance (${currentBalance} SOL) below threshold (${minThreshold} SOL`);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error checking wallet balance:', error);
+    return false;
+  }
+}
+
 // Renamed to be more generic since it's used by both tweet and background trades
 async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
   const currentTokenData = await fetchTokenNameAndSymbol(data.tokenData.tokenAddress);
@@ -138,12 +163,25 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
     // Check for existing active trade first
     const existingTrade = await findActiveTradeByToken(data.tokenData.tokenAddress);
     
-    // Execute buy first before updating any DB records
+    // Get wallet details first
     const walletDetails = await getWalletDetails();
-    if (!walletDetails || !walletDetails.solPrivateKey) {
-      throw new Error('Wallet details not found or private key missing');
+    if (!walletDetails || !walletDetails.solPrivateKey || !walletDetails.solPublicKey) {
+      throw new Error('Wallet details not found or keys missing');
     }
 
+    // Add balance check with retry loop
+    let hasBalance = false;
+    while (!hasBalance) {
+      hasBalance = await checkWalletBalanceForTrading(walletDetails.solPublicKey);
+      if (!hasBalance) {
+        console.log('Insufficient balance, waiting 5 minutes before retrying...');
+        await new Promise(resolve => setTimeout(resolve, 5 * 60 * 1000));
+        continue;
+      }
+      break;
+    }
+
+    // Execute buy first before updating any DB records
     const buyRequest = {
       private_key: decryptPrivateKey(walletDetails.solPrivateKey),
       outputMint: data.tokenData.tokenAddress,

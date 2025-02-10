@@ -186,13 +186,12 @@ export async function getActiveTrades() {
 
 // Get wallet details
 export async function getWalletDetails() {
-    console.log('Getting wallet details');
-    //console.log('Public key:', config.cryptoGlobals.publicKey);
+  console.log('Getting wallet details');
   try {
     const params = {
       TableName: 'AramidAI-X-Wallets',
       Key: { 
-        solPublicKey: config.cryptoGlobals.publicKey // Using original config import
+        solPublicKey: config.cryptoGlobals.publicKey
       }
     };
 
@@ -203,7 +202,7 @@ export async function getWalletDetails() {
       throw new Error('No wallet details found');
     }
 
-    // Return the wallet details with the encrypted private key
+    // Return both public and private keys
     return {
       solPublicKey: response.Item.solPublicKey,
       solPrivateKey: response.Item.solPrivateKey

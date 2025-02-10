@@ -5,6 +5,7 @@ import { checkRateLimit, updateRateLimitInfo, fetchLatestTokenData } from "../ut
 import axios from 'axios';
 import { saveTweetData } from '../db/dynamo.mjs';
 import { executeTradeBuy } from '../trading/buy.mjs';
+import { checkSolanaBalance } from '../utils/solanaUtils.mjs';
 
 dotenv.config();
 const url = 'https://api.smalltimedevs.com/ai/hive-engine'
@@ -155,40 +156,54 @@ export async function postToTwitter(tweetData, client) {
         (tweetData.agentInvestmentDecisionComment.startsWith("Invest") || 
          tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit"))) {
       
-      let targetGain, targetLoss;
-      let tradeType = null;
-
-      if (tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit")) {
-        const gainMatch = tweetData.agentInvestmentDecisionComment.match(/Gain \+(\d+)%/);
-        const lossMatch = tweetData.agentInvestmentDecisionComment.match(/Loss -(\d+)%/);
-        
-        targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
-        targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
-        tradeType = 'QUICK_PROFIT';
-      } else {
-        // Regular Invest format
-        const targetGainMatch = tweetData.agentInvestmentDecisionComment.match(/take profit at (\d+)%/i);
-        const targetLossMatch = tweetData.agentInvestmentDecisionComment.match(/stop loss at (\d+)%/i);
-        
-        targetGain = targetGainMatch ? parseFloat(targetGainMatch[1]) : 50;
-        targetLoss = targetLossMatch ? parseFloat(targetLossMatch[1]) : 20;
-        tradeType = 'INVEST';
-      }
-
-      console.log('Extracted trade parameters:', { targetGain, targetLoss });
+      // Check wallet balance before attempting trade
+      const currentBalance = await checkSolanaBalance(config.cryptoGlobals.publicKey);
+      const investmentAmount = config.cryptoGlobals.investmentAmountInSol;
+      const minThreshold = config.cryptoGlobals.walletThreshold;
       
-      // Execute trade and wait for result
-      tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss, tradeType);
-      
-      if (!tradeResult.success) {
-        console.error('Trade execution failed:', tradeResult.error);
+      if (currentBalance < minThreshold || (currentBalance - investmentAmount) < minThreshold) {
+        console.log('Insufficient balance for trade');
+        const donationComment = `I currently don't have enough funds to make this trade. If you want to see me keep purchasing through these trenches, feel free to donate to my trading funds:\nhttps://solscan.io/account/${config.cryptoGlobals.publicKey} 🙏`;
+        tweetData.comment = `${tweetData.comment}\n\n${donationComment}`;
       } else {
-        console.log('Trade executed successfully. Trade ID:', tradeResult.tradeId);
+        // Extract trade parameters and execute trade
+        let targetGain, targetLoss;
+        let tradeType = null;
 
-        if (tradeResult.txId) {
-          const tradeComment = `I put my money where my agent's mouth is! Check out the trade: https://solscan.io/tx/${tradeResult.txId} 🚀`;
-          tweetData.comment = `${tweetData.comment}\n${tradeComment}`;
+        if (tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit")) {
+          const gainMatch = tweetData.agentInvestmentDecisionComment.match(/Gain \+(\d+)%/);
+          const lossMatch = tweetData.agentInvestmentDecisionComment.match(/Loss -(\d+)%/);
+          
+          targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
+          targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
+          tradeType = 'QUICK_PROFIT';
+        } else {
+          // Regular Invest format
+          const targetGainMatch = tweetData.agentInvestmentDecisionComment.match(/take profit at (\d+)%/i);
+          const targetLossMatch = tweetData.agentInvestmentDecisionComment.match(/stop loss at (\d+)%/i);
+          
+          targetGain = targetGainMatch ? parseFloat(targetGainMatch[1]) : 50;
+          targetLoss = targetLossMatch ? parseFloat(targetLossMatch[1]) : 20;
+          tradeType = 'INVEST';
+        }
 
+        console.log('Extracted trade parameters:', { targetGain, targetLoss });
+        
+        tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss, tradeType);
+        
+        if (!tradeResult.success) {
+          if (tradeResult.error && tradeResult.error.includes('insufficient balance')) {
+            const donationComment = `I currently don't have enough funds to make this trade. If you want to see me keep purchasing through these trenches, feel free to donate to my trading funds:\nhttps://solscan.io/account/${config.cryptoGlobals.publicKey} 🙏`;
+            tweetData.comment = `${tweetData.comment}\n\n${donationComment}`;
+          } else {
+            console.error('Trade execution failed:', tradeResult.error);
+          }
+        } else {
+          console.log('Trade executed successfully. Trade ID:', tradeResult.tradeId);
+          if (tradeResult.txId) {
+            const tradeComment = `I put my money where my agent's mouth is! Check out the trade: https://solscan.io/tx/${tradeResult.txId} 🚀`;
+            tweetData.comment = `${tweetData.comment}\n${tradeComment}`;
+          }
         }
       }
     }

@@ -57,18 +57,29 @@ async function verifyAndCleanupSale(trade, tokenAddress, ownerPublicKey, private
       }
     }
 
-    // Close token account with proper private key handling
+    // Add debug logging for private key
+    console.log('Attempting cleanup with key info:', {
+      keyLength: privateKeyString?.length || 0,
+      ownerPublicKey,
+      tokenAddress
+    });
+
+    // Close token account with error handling
     console.log('Attempting to close token account...');
-    const closed = await closeTokenAccount(
-      tokenAddress, 
-      ownerPublicKey, 
-      privateKeyString // Pass the private key string directly
-    );
-    
-    if (closed) {
-      console.log('Successfully closed token account and reclaimed rent');
-    } else {
-      console.log('Failed to close token account');
+    try {
+      const closed = await closeTokenAccount(
+        tokenAddress, 
+        ownerPublicKey, 
+        privateKeyString
+      );
+      
+      if (closed) {
+        console.log('Successfully closed token account and reclaimed rent');
+      } else {
+        console.log('Failed to close token account');
+      }
+    } catch (error) {
+      console.error('Error during token account closure:', error);
     }
     
     return true;

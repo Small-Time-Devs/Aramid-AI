@@ -5,6 +5,7 @@ import { checkRateLimit } from './src/utils/helpers.mjs';
 import { TwitterApi } from "twitter-api-v2";
 import { initializeTradeMonitoring } from './src/trading/pnl.mjs';
 import { getActiveTrades } from './src/db/dynamo.mjs';
+import { checkSolanaBalance } from './src/utils/solanaUtils.mjs';
 
 async function startAI() {
   try {
@@ -87,7 +88,25 @@ async function autoTrader() {
         return;
       }
 
+      // Check wallet balance
+      const currentBalance = await checkSolanaBalance(config.cryptoGlobals.publicKey);
+      const investmentAmount = config.cryptoGlobals.investmentAmountInSol;
+      const minThreshold = config.cryptoGlobals.walletThreshold;
+      
+      // Check if balance is below threshold
+      if (currentBalance < minThreshold) {
+        console.log(`Insufficient wallet balance (${currentBalance} SOL) is below minimum threshold of ${minThreshold} SOL`);
+        return;
+      }
+      
+      // Check if investment would drop balance below threshold
+      if ((currentBalance - investmentAmount) < minThreshold) {
+        console.log(`Investment of ${investmentAmount} SOL would put wallet balance (${currentBalance} SOL) below threshold (${minThreshold} SOL)`);
+        return;
+      }
+
       console.log(`Current active trades: ${activeTrades.length}/${config.cryptoGlobals.maxOpenTrades}`);
+      console.log(`Wallet balance: ${currentBalance} SOL`);
       console.log('Auto trader checking for new opportunities...');
       
       const investmentChoice = await autoTraderAgent.generateTradeAnswer();

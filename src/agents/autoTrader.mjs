@@ -6,7 +6,6 @@ import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { storeTradeInfo } from '../db/dynamo.mjs';
 import { startPriceMonitoring } from '../trading/pnl.mjs';
 import { executeTradeBuy, executeBackgroundTradeBuy } from '../trading/buy.mjs';
-import { findActiveTradeByToken, checkPastTrades } from '../db/dynamo.mjs';
 
 // step 1
 export async function generateTradeAnswer() {
@@ -41,46 +40,16 @@ export async function generateTradeAnswer() {
 
 async function pickToken() {
     let tokenData;
-    let attempts = 0;
-    const MAX_ATTEMPTS = 50;
-
-    while (attempts < MAX_ATTEMPTS) {
-        try {
-            tokenData = await fetchLatestTokenData();
-            
-            if (config.cryptoGlobals.tradeTokenDevMode) {
-                console.log('Checking token:', tokenData.tokenAddress);
-            }
-
-            // Check if token is already in active trades
-            const existingTrade = await findActiveTradeByToken(tokenData.tokenAddress);
-            if (existingTrade) {
-                console.log('Token already has an active trade, trying another token...');
-                attempts++;
-                continue;
-            }
-
-            // Check if token was traded recently
-            const recentlyTraded = await checkPastTrades(tokenData.tokenAddress);
-            if (recentlyTraded) {
-                console.log('Token was traded recently, trying another token...');
-                attempts++;
-                continue;
-            }
-
-            if (config.cryptoGlobals.tradeTokenDevMode) {
-                console.log('Token data:', tokenData);
-            }
-
-            break; // Token passed all checks, proceed with it
-
-        } catch (error) {
-            console.error("Error fetching token data, trying again!", error);
-            attempts++;
-            if (attempts >= MAX_ATTEMPTS) {
-                throw new Error('Maximum attempts reached trying to find a suitable token');
-            }
+    try {
+      // Step 3
+        tokenData = await fetchLatestTokenData();
+        if (config.cryptoGlobals.tradeTokenDevMode) {
+          console.log('Token data:', tokenData);
         }
+
+    } catch (error) {
+        console.error("Error fetching token data going to try again!", error);
+        return await pickToken();
     }
 
     // Step 4

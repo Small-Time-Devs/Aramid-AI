@@ -15,8 +15,24 @@ import { config } from '../config/config.mjs';
 
 function createKeypairFromPrivateKey(privateKeyString) {
   try {
-    // Convert string to Uint8Array
-    const privateKeyUint8 = new Uint8Array(privateKeyString.split(',').map(Number));
+    // Handle base58 encoded private key
+    if (!privateKeyString.includes(',')) {
+      // If it's a base58 string, decode it
+      return Keypair.fromSecretKey(
+        Buffer.from(privateKeyString, 'base58')
+      );
+    }
+    
+    // Handle comma-separated number array
+    const privateKeyUint8 = new Uint8Array(
+      privateKeyString.split(',').map(num => parseInt(num.trim()))
+    );
+
+    // Validate key length
+    if (privateKeyUint8.length !== 64) {
+      throw new Error(`Invalid private key length: ${privateKeyUint8.length}`);
+    }
+
     return Keypair.fromSecretKey(privateKeyUint8);
   } catch (error) {
     console.error('Error creating keypair:', error);
@@ -50,12 +66,45 @@ export async function checkTokenBalance(tokenMint, ownerPublicKey) {
   }
 }
 
+export async function checkSolanaBalance(walletAddress) {
+  try {
+    const connection = new Connection(config.cryptoGlobals.rpcNode);
+    const publicKey = new PublicKey(walletAddress);
+    const balance = await connection.getBalance(publicKey);
+    return balance / 1e9; // Convert lamports to SOL
+  } catch (error) {
+    console.error('Error checking SOL balance:', error);
+    throw error;
+  }
+}
+
 export async function closeTokenAccount(tokenMint, owner, privateKeyString) {
   try {
+    // Log the private key length and format for debugging
+    console.log('Private key format check:', {
+      length: privateKeyString.length,
+      isCommaDelimited: privateKeyString.includes(','),
+      firstFewChars: privateKeyString.substring(0, 10) + '...'
+    });
+
     const connection = new Connection(config.cryptoGlobals.rpcNode);
     const mint = new PublicKey(tokenMint);
     const ownerPubkey = new PublicKey(owner);
-    const ownerKeypair = createKeypairFromPrivateKey(privateKeyString);
+    
+    // Create keypair with enhanced error handling
+    let ownerKeypair;
+    try {
+      ownerKeypair = createKeypairFromPrivateKey(privateKeyString);
+    } catch (error) {
+      console.error('Failed to create keypair:', error);
+      return false;
+    }
+
+    // Verify keypair matches owner
+    if (ownerKeypair.publicKey.toBase58() !== owner) {
+      console.error('Keypair public key does not match owner');
+      return false;
+    }
 
     // Find token account
     const tokenAccounts = await connection.getTokenAccountsByOwner(ownerPubkey, {
