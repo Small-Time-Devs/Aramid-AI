@@ -9,6 +9,7 @@ import { fetchTokenPairs, autoTradingAdvice } from '../utils/apiUtils.mjs';
 import { config } from '../config/config.mjs';
 import { config as dotEnvConfig } from 'dotenv';
 import { checkTokenBalance } from '../utils/solanaUtils.mjs';
+import { sendTradeNotification, sendErrorNotification } from '../utils/discord.mjs';
 
 dotEnvConfig();
 
@@ -151,10 +152,32 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
   async function executeSellOrder(trade, currentPrice) {
     const sellResult = await executeTradeSell(trade, currentPrice);
     if (!sellResult.success) {
+      await sendErrorNotification('Failed to execute sell order', {
+        tradeId: trade.tradeId,
+        tokenAddress: trade.tokenAddress,
+        currentPrice
+      });
       console.log(`Failed to sell trade ${trade.tradeId}, will retry...`);
-      setTimeout(() => monitor(), 5000); // Now monitor is in scope
+      setTimeout(() => monitor(), 5000);
       return;
     }
+
+    // Calculate actual profit/loss
+    const priceChangePercent = calculatePriceChange(sellResult.exitPriceSOL, trade.entryPriceSOL);
+    
+    // Prepare notification data
+    const sellNotificationData = {
+      ...trade,
+      exitPriceSOL: sellResult.exitPriceSOL,
+      exitPriceUSD: sellResult.exitPriceUSD,
+      sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
+      sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
+      reason: sellResult.reason || `${priceChangePercent > 0 ? 'Profit' : 'Loss'} Target Reached`,
+      txId: sellResult.txId
+    };
+
+    // Send sell notification
+    await sendTradeNotification(sellNotificationData, 'SELL');
     activeTrades.delete(trade.tradeId);
   }
 

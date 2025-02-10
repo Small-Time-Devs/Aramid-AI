@@ -85,18 +85,23 @@ export async function checkSolanaBalance(walletAddress) {
 
 export async function closeTokenAccount(tokenMint, owner, privateKeyString) {
   try {
-    // Log the private key length and format for debugging
+    // Log the private key format check
     console.log('Private key format check:', {
       length: privateKeyString.length,
       isCommaDelimited: privateKeyString.includes(','),
       firstFewChars: privateKeyString.substring(0, 10) + '...'
     });
 
-    const connection = new Connection(config.cryptoGlobals.rpcNode);
+    // Enhanced connection with higher commitment level
+    const connection = new Connection(config.cryptoGlobals.rpcNode, {
+      commitment: 'confirmed',
+      confirmTransactionInitialTimeout: 120000, // 2 minute timeout
+      wsEndpoint: config.cryptoGlobals.rpcNode.replace('http', 'ws')
+    });
+
     const mint = new PublicKey(tokenMint);
     const ownerPubkey = new PublicKey(owner);
     
-    // Create keypair with enhanced error handling
     let ownerKeypair;
     try {
       ownerKeypair = createKeypairFromPrivateKey(privateKeyString);
@@ -136,21 +141,89 @@ export async function closeTokenAccount(tokenMint, owner, privateKeyString) {
       );
       
       const burnTx = new Transaction().add(burnIx);
-      await sendAndConfirmTransaction(connection, burnTx, [ownerKeypair]);
+      
+      // Get fresh blockhash and send burn transaction with retry
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          const latestBlockhash = await connection.getLatestBlockhash('finalized');
+          burnTx.recentBlockhash = latestBlockhash.blockhash;
+          burnTx.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
+          burnTx.feePayer = ownerKeypair.publicKey;
+          
+          await sendAndConfirmTransaction(connection, burnTx, [ownerKeypair], {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed',
+            commitment: 'confirmed'
+          });
+          break;
+        } catch (err) {
+          if (attempt === 3) throw err;
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt));
+        }
+      }
     }
 
-    // Create and send close account transaction
+    // Create close account transaction
     const closeIx = createCloseAccountInstruction(
       tokenAccount,
-      ownerPubkey, // Destination for rent SOL
-      ownerPubkey, // Authority
+      ownerPubkey,
+      ownerPubkey
     );
 
     const closeTx = new Transaction().add(closeIx);
-    await sendAndConfirmTransaction(connection, closeTx, [ownerKeypair]);
-    
-    console.log('Token account closed successfully');
-    return true;
+
+    // Implement exponential backoff retry logic
+    const maxRetries = 5;
+    let lastError;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Get fresh blockhash for each attempt
+        const latestBlockhash = await connection.getLatestBlockhash('finalized');
+        closeTx.recentBlockhash = latestBlockhash.blockhash;
+        closeTx.lastValidBlockHeight = latestBlockhash.lastValidBlockHeight;
+        closeTx.feePayer = ownerKeypair.publicKey;
+
+        // Calculate deadline for confirmation
+        const deadline = Date.now() + 60000; // 60 second deadline
+
+        const signature = await sendAndConfirmTransaction(
+          connection, 
+          closeTx, 
+          [ownerKeypair],
+          {
+            skipPreflight: false,
+            preflightCommitment: 'confirmed',
+            commitment: 'confirmed',
+            maxRetries: 3
+          }
+        );
+
+        // Actively monitor transaction status
+        while (Date.now() < deadline) {
+          const status = await connection.getSignatureStatus(signature);
+          if (status?.value?.confirmationStatus === 'confirmed') {
+            console.log('Token account closed successfully with signature:', signature);
+            return true;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        throw new Error('Transaction confirmation timeout');
+      } catch (err) {
+        lastError = err;
+        console.log(`Attempt ${attempt}/${maxRetries} failed:`, err.message);
+        
+        if (attempt < maxRetries) {
+          // Exponential backoff
+          const delay = Math.min(1000 * Math.pow(2, attempt), 10000);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
+        }
+      }
+    }
+
+    throw new Error(`Failed to close token account after ${maxRetries} attempts. Last error: ${lastError?.message}`);
   } catch (error) {
     console.error('Error closing token account:', error);
     return false;

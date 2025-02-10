@@ -52,7 +52,7 @@ export const config = {
         walletThreshold: 0.04,
         investmentAmountInSol: 0.025,
         investHoldingTimePeriodHours: 1,
-        quickProfitHoldingTimePeriodMinutes: 20,
+        quickProfitHoldingTimePeriodMinutes: 30,
     },
 
     // Add API sections and their respective APIs
@@ -65,5 +65,9 @@ export const config = {
             raydiumMintIds: 'https://api-v3.raydium.io/mint/ids?mints=',
             raydiumMintPrice: 'https://api-v3.raydium.io/mint/price?mints=',
         },
+    },
+
+    discord: {
+        webhookUrl: process.env.DISCORD_WEB_HOOK || '',
     },
 };

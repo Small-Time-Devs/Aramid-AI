@@ -6,6 +6,7 @@ import { startPriceMonitoring } from './pnl.mjs';
 import { config } from '../config/config.mjs';
 import { fetchTokenPairs, fetchTokenNameAndSymbol } from '../utils/apiUtils.mjs';
 import { checkSolanaBalance } from '../utils/solanaUtils.mjs';
+import { sendTradeNotification } from '../utils/discord.mjs';
 
 export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeType) {
   try {
@@ -38,6 +39,22 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeTy
         newTotalTokens: updatedTrade.tokensReceived
       });
 
+      // Prepare notification data
+      const buyNotificationData = {
+        tokenName: tweetData.tokenData.tokenName,
+        tokenAddress: tweetData.tokenData.tokenAddress,
+        tradeType: tradeType,
+        amountInvested: buyResult.amountInvested,
+        entryPriceSOL: parseFloat(buyResult.currentPrice),
+        tokensReceived: buyResult.tokensReceived,
+        targetPercentageGain: targetGain,
+        targetPercentageLoss: targetLoss,
+        txId: buyResult.txId
+      };
+
+      // Send buy notification
+      await sendTradeNotification(buyNotificationData, 'BUY');
+
       return {
         success: true,
         tradeId: existingTrade.tradeId,
@@ -47,7 +64,27 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeTy
     }
 
     // No existing trade found, proceed with new trade
-    return await executeBuyOrder(tweetData, targetGain, targetLoss, tradeType);
+    const buyResult = await executeBuyOrder(tweetData, targetGain, targetLoss, tradeType);
+
+    if (buyResult.success) {
+      // Prepare notification data
+      const buyNotificationData = {
+        tokenName: tweetData.tokenData.tokenName,
+        tokenAddress: tweetData.tokenData.tokenAddress,
+        tradeType: tradeType,
+        amountInvested: buyResult.amountInvested,
+        entryPriceSOL: parseFloat(buyResult.currentPrice),
+        tokensReceived: buyResult.tokensReceived,
+        targetPercentageGain: targetGain,
+        targetPercentageLoss: targetLoss,
+        txId: buyResult.txId
+      };
+
+      // Send buy notification
+      await sendTradeNotification(buyNotificationData, 'BUY');
+    }
+
+    return buyResult;
   } catch (error) {
     console.error('Error executing buy:', error);
     return { success: false, error: error.message };
@@ -85,6 +122,22 @@ export async function executeBackgroundTradeBuy(investmentChoice, targetGain, ta
         newTotalTokens: updatedTrade.tokensReceived
       });
 
+      // Prepare notification data
+      const buyNotificationData = {
+        tokenName: investmentChoice.tokenData.tokenName,
+        tokenAddress: investmentChoice.tokenData.tokenAddress,
+        tradeType: tradeType,
+        amountInvested: buyResult.amountInvested,
+        entryPriceSOL: parseFloat(buyResult.currentPrice),
+        tokensReceived: buyResult.tokensReceived,
+        targetPercentageGain: targetGain,
+        targetPercentageLoss: targetLoss,
+        txId: buyResult.txId
+      };
+
+      // Send buy notification
+      await sendTradeNotification(buyNotificationData, 'BUY');
+
       return {
         success: true,
         tradeId: existingTrade.tradeId,
@@ -94,7 +147,27 @@ export async function executeBackgroundTradeBuy(investmentChoice, targetGain, ta
     }
 
     // No existing trade found, proceed with new trade
-    return await executeBuyOrder(investmentChoice, targetGain, targetLoss, tradeType);
+    const buyResult = await executeBuyOrder(investmentChoice, targetGain, targetLoss, tradeType);
+
+    if (buyResult.success) {
+      // Prepare notification data
+      const buyNotificationData = {
+        tokenName: investmentChoice.tokenData.tokenName,
+        tokenAddress: investmentChoice.tokenData.tokenAddress,
+        tradeType: tradeType,
+        amountInvested: buyResult.amountInvested,
+        entryPriceSOL: parseFloat(buyResult.currentPrice),
+        tokensReceived: buyResult.tokensReceived,
+        targetPercentageGain: targetGain,
+        targetPercentageLoss: targetLoss,
+        txId: buyResult.txId
+      };
+
+      // Send buy notification
+      await sendTradeNotification(buyNotificationData, 'BUY');
+    }
+
+    return buyResult;
   } catch (error) {
     console.error('Error executing background buy:', error);
     return { success: false, error: error.message };
@@ -144,22 +217,23 @@ async function checkWalletBalanceForTrading(publicKey) {
 
 // Renamed to be more generic since it's used by both tweet and background trades
 async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
-  const currentTokenData = await fetchTokenNameAndSymbol(data.tokenData.tokenAddress);
-  const currentTokenDataPrices = await fetchTokenPairs(data.tokenData.tokenAddress);
-  const currentTokenName = currentTokenData.tokenName;
-  const currentTokenDecimals = currentTokenData.decimals;
-  const currentPriceInSol = currentTokenDataPrices.priceNative;
-  const currentPriceInUSD = currentTokenDataPrices.priceUsd;
-  console.log('Starting buy execution with parameters:', {
-    token: currentTokenName,
-    decimals: currentTokenDecimals,
-    address: data.tokenData.tokenAddress,
-    targetGain,
-    targetLoss,
-    priceInSol: currentPriceInSol
-  });
-
   try {
+    const currentTokenData = await fetchTokenNameAndSymbol(data.tokenData.tokenAddress);
+    const currentTokenDataPrices = await fetchTokenPairs(data.tokenData.tokenAddress);
+    const currentTokenName = currentTokenData?.tokenName || data.tokenData.tokenName || 'Unknown Token';
+    const currentTokenDecimals = currentTokenData?.decimals || 9;
+    const currentPriceInSol = currentTokenDataPrices.priceNative;
+    const currentPriceInUSD = currentTokenDataPrices.priceUsd;
+
+    console.log('Starting buy execution with parameters:', {
+      token: currentTokenName,
+      decimals: currentTokenDecimals,
+      address: data.tokenData.tokenAddress,
+      targetGain,
+      targetLoss,
+      priceInSol: currentPriceInSol
+    });
+
     // Check for existing active trade first
     const existingTrade = await findActiveTradeByToken(data.tokenData.tokenAddress);
     
@@ -199,22 +273,29 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
 
     const tokensPurchased = parseFloat(buyResponse.data.tokensPurchased);
     const amountInvested = parseFloat(buyRequest.amount);
+    const actualPurchaseAmount = parseFloat(tokensPurchased) / Math.pow(10, currentTokenDecimals);
 
-    // Only proceed with DB updates if we have a successful transaction
     if (existingTrade) {
-      console.log('Updating existing trade after successful purchase:', {
-        success: true,
-        tradeId: existingTrade.tradeId,
-        txId: buyResponse.data.txid,
-        addingAmount: amountInvested,
-        addingTokens: tokensPurchased
-      });
-
       const updatedTrade = await updateTradeAmounts(
         existingTrade.tradeId,
         amountInvested,
-        tokensPurchased
+        actualPurchaseAmount
       );
+
+      // Ensure token name is included in notification data
+      const notificationData = {
+        tokenName: currentTokenName,
+        tokenAddress: data.tokenData.tokenAddress,
+        tradeType: tradeType,
+        amountInvested: amountInvested,
+        entryPriceSOL: currentPriceInSol,
+        tokensReceived: actualPurchaseAmount,
+        targetPercentageGain: targetGain,
+        targetPercentageLoss: targetLoss,
+        txId: buyResponse.data.txid
+      };
+
+      await sendTradeNotification(notificationData, 'BUY');
 
       return {
         success: true,
@@ -222,15 +303,13 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
         txId: buyResponse.data.txid,
         amountInvested: updatedTrade.amountInvested,
         tokensReceived: updatedTrade.tokensReceived,
+        currentPrice: currentPriceInSol,
+        tokenName: currentTokenName,
         isUpdate: true
       };
     }
-    
-    // Convert the amount correctly based on decimals
-    // this needs to be converted back into token format instead of decimal format
-    const actualPurcahseAmount = parseFloat(tokensPurchased) / Math.pow(10, currentTokenDecimals);
 
-    // Create new trade record only after successful purchase
+    // Create new trade record
     const tradeId = await storeTradeInfo({
       tokenName: currentTokenName,
       tokenAddress: data.tokenData.tokenAddress,
@@ -240,17 +319,35 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
       targetPercentageGain: targetGain,
       targetPercentageLoss: targetLoss,
       tradeType: tradeType,
-      tokensReceived: actualPurcahseAmount,
+      tokensReceived: actualPurchaseAmount,
     });
 
+    // Start monitoring
     startPriceMonitoring(tradeId);
-    
+
+    // Ensure token name is included in notification data for new trades
+    const notificationData = {
+      tokenName: currentTokenName,
+      tokenAddress: data.tokenData.tokenAddress,
+      tradeType: tradeType,
+      amountInvested: amountInvested,
+      entryPriceSOL: currentPriceInSol,
+      tokensReceived: actualPurchaseAmount,
+      targetPercentageGain: targetGain,
+      targetPercentageLoss: targetLoss,
+      txId: buyResponse.data.txid
+    };
+
+    await sendTradeNotification(notificationData, 'BUY');
+
     return { 
       success: true, 
       tradeId,
       txId: buyResponse.data.txid,
       amountInvested,
-      tokensReceived: tokensPurchased,
+      tokensReceived: actualPurchaseAmount,
+      currentPrice: currentPriceInSol,
+      tokenName: currentTokenName,
       isUpdate: false
     };
     

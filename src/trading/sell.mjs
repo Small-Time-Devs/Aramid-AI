@@ -1,9 +1,10 @@
 import axios from 'axios';
-import { getWalletDetails, updateTradeWithSellInfo } from '../db/dynamo.mjs';
+import { getWalletDetails, updateTradeWithSellInfo, moveTradeToPastTrades } from '../db/dynamo.mjs';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { fetchTokenPairs } from '../utils/apiUtils.mjs';
 import { config } from '../config/config.mjs';
 import { checkTokenBalance, closeTokenAccount } from '../utils/solanaUtils.mjs';
+import { sendTradeNotification } from '../utils/discord.mjs';
 
 const MAX_SELL_ATTEMPTS = 3;
 const CONFIRMATION_WAIT_TIME = 15000; // 15 seconds
@@ -91,6 +92,17 @@ async function verifyAndCleanupSale(trade, tokenAddress, ownerPublicKey, private
 
 export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
   try {
+    // Get latest token data for pricing
+    const tokenData = await fetchTokenPairs(trade.tokenAddress);
+    const exitPriceSOL = currentPrice || tokenData?.priceNative;
+    const exitPriceUSD = tokenData?.priceUsd;
+
+    // Get actual token balance
+    const actualBalance = await checkTokenBalance(trade.tokenAddress, config.cryptoGlobals.publicKey);
+    if (!actualBalance || actualBalance < 1) {
+      throw new Error('No tokens available to sell');
+    }
+
     // Get wallet details from DynamoDB
     const walletDetails = await getWalletDetails(config.twitter.botUserId);
     
@@ -124,7 +136,7 @@ export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
     const sellRequest = {
       private_key: decryptPrivateKey(walletDetails.solPrivateKey),
       inputMint: trade.tokenAddress,
-      amount: sellAmount,
+      amount: actualBalance,
     };
 
     try {
@@ -148,7 +160,28 @@ export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
       });
 
       if (sellResponse.data.success) {
-        // Only proceed with cleanup if not already in cleanup mode
+        // Calculate trade results
+        const priceChangePercent = ((exitPriceSOL - trade.entryPriceSOL) / trade.entryPriceSOL) * 100;
+
+        // Send Discord notification before any other operations
+        const sellNotificationData = {
+          tokenName: trade.tokenName,
+          tokenAddress: trade.tokenAddress,
+          tradeType: trade.tradeType,
+          exitPriceSOL,
+          exitPriceUSD,
+          sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
+          sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
+          reason: priceChangePercent >= trade.targetPercentageGain ? 'Target Gain Reached' :
+                  priceChangePercent <= -trade.targetPercentageLoss ? 'Stop Loss Hit' : 
+                  isCleanup ? 'Cleanup Execution' : 'Manual Exit',
+          txId: sellResponse.data.txId
+        };
+
+        // Send notification first
+        await sendTradeNotification(sellNotificationData, 'SELL');
+
+        // Then proceed with cleanup and archival
         if (!isCleanup) {
           await verifyAndCleanupSale(
             trade,
@@ -156,38 +189,24 @@ export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
             config.cryptoGlobals.publicKey,
             decryptPrivateKey(walletDetails.solPrivateKey)
           );
+
+          await moveTradeToPastTrades(trade, {
+            exitPriceSOL,
+            exitPriceUSD,
+            sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
+            sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
+            status: 'COMPLETED',
+            reason: sellNotificationData.reason
+          });
         }
 
-        const priceChangePercent = ((currentPrice - trade.entryPriceSOL) / trade.entryPriceSOL) * 100;
-        
-        // Get current token data for USD price
-        const tokenData = await fetchTokenPairs(trade.tokenAddress);
-        const currentTokenName = tokenData.tokenName;
-        const currentPriceInSol = tokenData.priceNative;
-        const currentPriceInUSD = tokenData.priceUsd;
-        if (!tokenData) {
-          throw new Error('Failed to fetch token price data');
-        }
-
-        // Prepare sell info
-        const sellInfo = {
-          exitPriceSOL: currentPriceInSol,
-          exitPriceUSD: currentPriceInUSD,
-          sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : 0,
-          sellPercentageLoss: priceChangePercent < 0 ? Math.abs(priceChangePercent) : 0
+        return {
+          success: true,
+          txId: sellResponse.data.txId,
+          exitPriceSOL,
+          exitPriceUSD,
+          priceChangePercent
         };
-
-        // Update trade info and move to past trades
-        await updateTradeWithSellInfo(trade.tradeId, sellInfo);
-
-        console.log('Trade completed and archived:', {
-          tradeId: trade.tradeId,
-          tokenAddress: trade.tokenAddress,
-          priceChangePercent,
-          exitPrice: currentPriceInSol
-        });
-
-        return { success: true, priceChangePercent };
       }
 
       return { success: false, error: 'Sell order failed' };
