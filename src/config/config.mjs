@@ -12,7 +12,7 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: true,
+            xAutoPoster: false,
             devMode: false,
             xAutoResponder: false,
             useDexScreenerLatestTokens: true,
@@ -43,8 +43,8 @@ export const config = {
 
         useJupNewTokens: false, // Supports raydium and pump fun tokens. ( Not great luck so far trading pumpfun tokens with jup still a WIP )
 
-        tradeTokensInBackgroundInterval: 60000, // 60 seconds in miliseconds
-        maxOpenTrades: 2,
+        tradeTokensInBackgroundInterval: 30000, // 60 seconds in miliseconds
+        maxOpenTrades: 1,
         solMint: 'So11111111111111111111111111111111111111112',
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
@@ -69,5 +69,7 @@ export const config = {
 
     discord: {
         webhookUrl: process.env.DISCORD_WEB_HOOK || '',
+        botToken: process.env.DISCORD_KEY,
+        startupChannelId: process.env.DISCORD_BOT_CHANNEL_ID, // Add this line
     },
 };

@@ -6,14 +6,20 @@ import { TwitterApi } from "twitter-api-v2";
 import { initializeTradeMonitoring } from './src/trading/pnl.mjs';
 import { getActiveTrades } from './src/db/dynamo.mjs';
 import { checkSolanaBalance } from './src/utils/solanaUtils.mjs';
+import { initializeDiscordBot } from './src/utils/discord.mjs';
+import { setupCommands } from './src/commands/discord.mjs';
 
 async function startAI() {
   try {
+    // Initialize Discord bot
+    initializeDiscordBot();
+    setupCommands();
+
     // Initialize trade monitoring for any existing active trades
     await initializeTradeMonitoring();
     
     // Start both auto-posting and auto-trading
-    autoPostToTwitter();
+    //autoPostToTwitter();
     autoTrader();
   } catch (error) {
     console.error('Error starting bot:', error);

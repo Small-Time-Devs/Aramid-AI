@@ -1,8 +1,51 @@
-import { WebhookClient } from 'discord.js';
+import { WebhookClient, Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
 import { config } from '../config/config.mjs';
 
 // Initialize Discord webhook client
 const webhookClient = new WebhookClient({ url: config.discord.webhookUrl });
+
+// Initialize Discord bot client with basic intents
+export const botClient = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+  ]
+});
+
+// Bot ready event
+botClient.once(Events.ClientReady, async c => {
+  console.log(`Ready! Logged in as ${c.user.tag}`);
+  
+  // Send startup message to a specific channel if configured
+  if (config.discord.startupChannelId) {
+    try {
+      const channel = c.channels.cache.get(config.discord.startupChannelId);
+      if (!channel) {
+        console.error('Could not find the specified channel');
+        return;
+      }
+
+      // Check if bot has permission to send messages
+      if (channel.isTextBased() && 
+          channel.permissionsFor(c.user)?.has(PermissionsBitField.Flags.SendMessages)) {
+        await channel.send('🟢 Bot is now online and ready!');
+      } else {
+        console.error('Bot does not have permission to send messages in this channel');
+      }
+    } catch (error) {
+      console.error('Error sending startup message:', error.message);
+    }
+  }
+});
+
+// Initialize bot with token
+export function initializeDiscordBot() {
+  if (!config.discord.botToken) {
+    console.error('Discord bot token not found in config!');
+    return;
+  }
+  botClient.login(config.discord.botToken);
+}
 
 export async function sendTradeNotification(tradeData, type = 'BUY') {
   try {
