@@ -9,7 +9,7 @@ import { fetchTokenPairs, autoTradingAdvice } from '../utils/apiUtils.mjs';
 import { config } from '../config/config.mjs';
 import { config as dotEnvConfig } from 'dotenv';
 import { checkTokenBalance } from '../utils/solanaUtils.mjs';
-import { sendTradeNotification, sendErrorNotification } from '../utils/discord.mjs';
+import { sendTradeNotification, sendErrorNotification, sendTradeStatusUpdate, sendAIAdviceUpdate } from '../utils/discord.mjs';
 
 dotEnvConfig();
 
@@ -69,6 +69,7 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
         
         await moveTradeToPastTrades(trade, sellInfo);
         activeTrades.delete(tradeId);
+        await sendTradeStatusUpdate(`Trade ${trade.tradeId} has no balance, archiving trade...`, trade.tradeId);
         return;
       }
 
@@ -129,14 +130,25 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
           );
           
           lastAICheckTimes.set(tradeId, currentTime);
-          console.log(`AI advice for ${tradeId}: ${advice} CA: ${trade.tokenAddress} Entry Price: ${trade.entryPriceSOL} Target Gain: ${trade.targetPercentageGain} Target Loss: ${trade.targetPercentageLoss}`);
+          
+          // Send AI advice to Discord
+          await sendAIAdviceUpdate(trade.tradeId, String(advice), {
+            contractAddress: trade.tokenAddress,
+            entryPrice: trade.entryPriceSOL,
+            targetGain: trade.targetPercentageGain,
+            targetLoss: trade.targetPercentageLoss
+          });
 
-          // Handle advice
-          if (advice.startsWith('Sell Now')) {
-            await executeSellOrder(trade, currentPrice);
-            return;
-          } else if (advice.startsWith('Adjust Trade')) {
-            await handleTradeAdjustment(trade, advice);
+          console.log(`AI advice for ${trade.tradeId}: ${advice} CA: ${trade.tokenAddress} Entry Price: ${trade.entryPriceSOL} Target Gain: ${trade.targetPercentageGain} Target Loss: ${trade.targetPercentageLoss}`);
+
+          // Handle advice - ensure advice is a string before using startsWith
+          if (typeof advice === 'string') {
+            if (advice.startsWith('Sell Now')) {
+              await executeSellOrder(trade, currentPrice);
+              return;
+            } else if (advice.startsWith('Adjust Trade')) {
+              await handleTradeAdjustment(trade, advice);
+            }
           }
         }
       }
@@ -179,6 +191,7 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
     // Send sell notification
     await sendTradeNotification(sellNotificationData, 'SELL');
     activeTrades.delete(trade.tradeId);
+    await sendTradeStatusUpdate(`Trade ${trade.tradeId} archived to past trades`, trade.tradeId);
   }
 
   activeTrades.set(tradeId, true);

@@ -12,7 +12,7 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: false,
+            xAutoPoster: true,
             devMode: false,
             xAutoResponder: false,
             useDexScreenerLatestTokens: true,
@@ -70,6 +70,8 @@ export const config = {
     discord: {
         webhookUrl: process.env.DISCORD_WEB_HOOK || '',
         botToken: process.env.DISCORD_KEY,
-        startupChannelId: process.env.DISCORD_BOT_CHANNEL_ID, // Add this line
+        twitterChannel: process.env.DISCORD_TWITTER_CHANNEL_ID,
+        tradeChannel: process.env.DISCORD_TRADE_CHANNEL_ID,
+        hiveChannel: process.env.DISCORD_BOT_CHANNEL_ID,
     },
 };

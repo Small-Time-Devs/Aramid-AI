@@ -19,7 +19,7 @@ async function startAI() {
     await initializeTradeMonitoring();
     
     // Start both auto-posting and auto-trading
-    //autoPostToTwitter();
+    autoPostToTwitter();
     autoTrader();
   } catch (error) {
     console.error('Error starting bot:', error);

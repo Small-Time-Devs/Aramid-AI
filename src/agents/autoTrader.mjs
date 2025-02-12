@@ -6,6 +6,7 @@ import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { storeTradeInfo } from '../db/dynamo.mjs';
 import { startPriceMonitoring } from '../trading/pnl.mjs';
 import { executeTradeBuy, executeBackgroundTradeBuy } from '../trading/buy.mjs';
+import { sendAnalysisMessage, sendRetryNotification } from '../utils/discord.mjs';
 
 // step 1
 export async function generateTradeAnswer() {
@@ -41,7 +42,6 @@ export async function generateTradeAnswer() {
 async function pickToken() {
     let tokenData;
     try {
-      // Step 3
         tokenData = await fetchLatestTokenData();
         if (config.cryptoGlobals.tradeTokenDevMode) {
           console.log('Token data:', tokenData);
@@ -51,6 +51,12 @@ async function pickToken() {
         console.error("Error fetching token data going to try again!", error);
         return await pickToken();
     }
+
+    // Send token data to Discord
+    await sendAnalysisMessage('token', {
+        tokenAddress: tokenData.tokenAddress,
+        chainId: tokenData.chainId
+    });
 
     // Step 4
     const tokenAddress = tokenData.tokenAddress;
@@ -73,6 +79,7 @@ async function pickToken() {
     }
 
     if (!agentResponses || agentResponses.length < 2) {
+        await sendRetryNotification();
         throw new Error("Invalid agent responses received from API.");
     }
 
@@ -81,6 +88,13 @@ async function pickToken() {
     const investmentAgent = agentResponses[1];
     const agentInvestmentComment = investmentAgent.response;
     const agentInvestmentDecisionComment = investmentAgent.decision;
+
+    // Send analysis results to Discord
+    await sendAnalysisMessage('analysis', {
+        analysis: agetnAnalysisComment,
+        investment: agentInvestmentComment,
+        decision: agentInvestmentDecisionComment
+    });
 
     if (config.cryptoGlobals.tradeTokenDevMode) {
       console.log("Analyst Response:", agetnAnalysisComment);

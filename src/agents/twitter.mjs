@@ -6,6 +6,7 @@ import axios from 'axios';
 import { saveTweetData } from '../db/dynamo.mjs';
 import { executeTradeBuy } from '../trading/buy.mjs';
 import { checkSolanaBalance } from '../utils/solanaUtils.mjs';
+import { sendAnalysisMessage, sendTwitterUpdate } from '../utils/discord.mjs';
 
 dotenv.config();
 const url = 'https://api.smalltimedevs.com/ai/hive-engine'
@@ -148,6 +149,12 @@ async function pickNewTokenNonBoosted() {
 
 export async function postToTwitter(tweetData, client) {
   try {
+    // Send tweet data to hive channel first
+    await sendAnalysisMessage('tweet', {
+      analysis: tweetData.agetnAnalysisComment,
+      investment: tweetData.agentInvestmentComment,
+      decision: tweetData.agentInvestmentDecisionComment
+    });
 
     let tradeResult = null;
 
@@ -223,14 +230,18 @@ export async function postToTwitter(tweetData, client) {
       return;
     }
 
+    // Post main tweet and send to Discord
     const { data: createdTweet, headers } = await client.v2.tweet(tweetData.tweet);
     updateRateLimitInfo(headers);
+    await sendTwitterUpdate('tweet', tweetData.tweet);
     console.log('Tweet posted successfully:', createdTweet);
 
+    // Post reply and send to Discord
     if (tweetData.comment) {
       const { headers: commentHeaders } = await client.v2.reply(tweetData.comment, createdTweet.id);
       updateRateLimitInfo(commentHeaders);
-      console.log('Comment posted successfully:', tweetData.comment);
+      await sendTwitterUpdate('reply', tweetData.comment);
+      console.log('Comment posted successfully');
     }
 
     // Save tweet data to DynamoDB
