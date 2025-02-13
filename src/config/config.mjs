@@ -73,6 +73,15 @@ export const config = {
         twitterChannel: process.env.DISCORD_TWITTER_CHANNEL_ID,
         tradeChannel: process.env.DISCORD_TRADE_CHANNEL_ID,
         hiveChannel: process.env.DISCORD_BOT_CHANNEL_ID,
-        generalChannel: process.env.DISCORD_ARAMID_GENERAL_CHANNEL_ID,
+        generalAramidChannel: process.env.DISCORD_ARAMID_GENERAL_CHANNEL_ID,
+        // Fixed environment variable names to match standard naming convention
+        monitoredChannels: [
+            process.env.DISCORD_ARAMID_GENERAL_CHANNEL_ID,
+            process.env.DISCORD_GENERAL_CHAT,
+            process.env.DISCORD_DECRYPT_NEWS,
+            process.env.DISCORD_LEDGER_INSIGHTS,
+            process.env.DISCORD_CYBER_SECURITY_NEWS,
+            process.env.DISCORD_CRYPTO_NEWS,
+        ].filter(Boolean), // This removes any undefined channels
     },
 };
