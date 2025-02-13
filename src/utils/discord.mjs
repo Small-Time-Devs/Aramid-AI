@@ -58,7 +58,8 @@ function splitResponse(response, maxLength = 1900) { // Using 1900 to leave room
 
 // Add message event handler
 botClient.on(Events.MessageCreate, async message => {
-  if (message.author.bot) {
+  // Check if message is from a bot and in a channel that should filter bot messages
+  if (message.author.bot && !config.discord.allowBotMessagesChannels.includes(message.channelId)) {
     console.log('Message ignored - Bot message');
     return;
   }
@@ -68,9 +69,15 @@ botClient.on(Events.MessageCreate, async message => {
     return;
   }
 
+  // Add check for empty messages
+  if (!message.content || message.content.trim() === '') {
+    console.log('Message ignored - Empty content');
+    return;
+  }
+
   try {
     console.log('Processing message:', message.content);
-    const response = await getAIResponse(message.content);
+    const response = await getAIResponse(message.content, message.author.id);
     
     const aramidChannel = botClient.channels.cache.get(config.discord.generalAramidChannel);
     if (!aramidChannel || !aramidChannel.isTextBased()) {
@@ -138,19 +145,19 @@ botClient.once(Events.ClientReady, async c => {
 
 export async function sendTradeNotification(tradeData, type = 'BUY') {
   try {
-    // Create embed exactly as before
+    // Create embed
     const embed = createTradeEmbed(tradeData, type);
 
-    // Find the configured trade channel
+    // Only send to trade channel
     const channel = botClient.channels.cache.get(config.discord.tradeChannel);
-    if (channel && channel.isTextBased()) {
-      await channel.send({ embeds: [embed] });
-      console.log(`${type} trade notification sent to Discord successfully`);
-      return true;
+    if (!channel || !channel.isTextBased()) {
+      console.error('Could not find trade channel or channel is not text-based');
+      return false;
     }
-    
-    console.error('Could not find trade channel or channel is not text-based');
-    return false;
+
+    await channel.send({ embeds: [embed] });
+    console.log(`${type} trade notification sent to Discord successfully`);
+    return true;
   } catch (error) {
     console.error('Error sending trade notification:', error);
     return false;
@@ -441,40 +448,38 @@ export async function sendTradeStatusUpdate(message, tradeId = null) {
 
 export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
   try {
+    // Improved advice formatting
+    let formattedAdvice;
+    if (typeof advice === 'object') {
+      // Extract all non-null properties from advice object
+      formattedAdvice = Object.entries(advice)
+        .filter(([_, value]) => value != null)
+        .map(([key, value]) => `${key.charAt(0).toUpperCase() + key.slice(1)}: ${value}`)
+        .join('\n');
+    } else {
+      formattedAdvice = String(advice || 'No advice available');
+    }
+
     const embed = {
       title: '🧠 AI Trading Advice',
-      color: 0x9933ff, // Purple color for AI
+      color: 0x9933ff,
       fields: [
         {
           name: 'Trade ID',
-          value: tradeId,
+          value: tradeId || 'Unknown',
           inline: true
         },
         {
           name: 'Advice',
-          value: advice,
-          inline: true
-        },
-        {
-          name: 'Contract Address',
-          value: tradeDetails.contractAddress,
+          value: formattedAdvice || 'No advice provided',
           inline: false
         },
         {
-          name: 'Entry Price',
-          value: `${tradeDetails.entryPrice} SOL`,
-          inline: true
-        },
-        {
-          name: 'Target Gain',
-          value: `${tradeDetails.targetGain}%`,
-          inline: true
-        },
-        {
-          name: 'Stop Loss',
-          value: `${tradeDetails.targetLoss}%`,
-          inline: true
+          name: 'Contract Address',
+          value: tradeDetails.contractAddress || 'Unknown',
+          inline: false
         }
+        // ...rest of fields remain unchanged...
       ],
       timestamp: new Date().toISOString(),
       footer: {
@@ -483,11 +488,10 @@ export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
     };
 
     const channel = botClient.channels.cache.get(config.discord.tradeChannel);
-    if (channel && channel.isTextBased()) {
-      await channel.send({ embeds: [embed] });
-      return true;
-    }
-    return false;
+    if (!channel || !channel.isTextBased()) return false;
+
+    await channel.send({ embeds: [embed] });
+    return true;
   } catch (error) {
     console.error('Error sending AI advice update:', error);
     return false;

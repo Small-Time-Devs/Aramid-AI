@@ -44,13 +44,13 @@ export const config = {
         useJupNewTokens: false, // Supports raydium and pump fun tokens. ( Not great luck so far trading pumpfun tokens with jup still a WIP )
 
         tradeTokensInBackgroundInterval: 30000, // 60 seconds in miliseconds
-        maxOpenTrades: 1,
+        maxOpenTrades: 2,
         solMint: 'So11111111111111111111111111111111111111112',
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
         walletThreshold: 0.04,
-        investmentAmountInSol: 0.025,
+        investmentAmountInSol: 0.02,
         investHoldingTimePeriodHours: 1,
         quickProfitHoldingTimePeriodMinutes: 30,
     },
@@ -68,20 +68,32 @@ export const config = {
     },
 
     discord: {
-        webhookUrl: process.env.DISCORD_WEB_HOOK || '',
         botToken: process.env.DISCORD_KEY,
-        twitterChannel: process.env.DISCORD_TWITTER_CHANNEL_ID,
-        tradeChannel: process.env.DISCORD_TRADE_CHANNEL_ID,
-        hiveChannel: process.env.DISCORD_BOT_CHANNEL_ID,
-        generalAramidChannel: process.env.DISCORD_ARAMID_GENERAL_CHANNEL_ID,
-        // Fixed environment variable names to match standard naming convention
+        webhookUrl: process.env.DISCORD_WEB_HOOK || '',
+
+        generalAramidChannel: process.env.DISCORD_ARAMID_GENERAL,
+        hiveChannel: process.env.DISCORD_ARAMID_HIVE,
+        twitterChannel: process.env.DISCORD_TWITTER,
+        tradeChannel: process.env.DISCORD_TRADE,
+
         monitoredChannels: [
-            process.env.DISCORD_ARAMID_GENERAL_CHANNEL_ID,
+            // Aramid Monitored Channels
+            process.env.DISCORD_ARAMID_GENERAL,
             process.env.DISCORD_GENERAL_CHAT,
-            process.env.DISCORD_DECRYPT_NEWS,
-            process.env.DISCORD_LEDGER_INSIGHTS,
-            process.env.DISCORD_CYBER_SECURITY_NEWS,
-            process.env.DISCORD_CRYPTO_NEWS,
-        ].filter(Boolean), // This removes any undefined channels
+            process.env.DISCORD_TWITTER,
+            process.env.DISCORD_ARAMID_HIVE,
+            process.env.DISCORD_TRADE,
+
+            // Other Random Channels
+            process.env.DISCORD_PROFIT_SHOWCASE,
+            process.env.DISCORD_LOSS_SHOWCASE,
+            process.env.DISCORD_FARMING_CHAT,
+            process.env.DISCORD_MEME_CHAT,
+        ].filter(Boolean),
+
+        allowBotMessagesChannels: [
+            process.env.DISCORD_TRADE,
+            // Add any other channels where bot messages should be allowed
+        ].filter(Boolean),
     },
 };
