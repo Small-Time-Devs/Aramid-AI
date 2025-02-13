@@ -22,6 +22,40 @@ export function initializeDiscordBot() {
   botClient.login(config.discord.botToken);
 }
 
+// Helper function to split long messages
+function splitResponse(response, maxLength = 1900) { // Using 1900 to leave room for mentions
+  if (!response || typeof response !== 'string') {
+    return ['No response available'];
+  }
+
+  const chunks = [];
+  let remainingText = response;
+
+  while (remainingText.length > 0) {
+    if (remainingText.length <= maxLength) {
+      chunks.push(remainingText);
+      break;
+    }
+
+    let chunk = remainingText.slice(0, maxLength);
+    let splitIndex = chunk.lastIndexOf('\n\n');
+    
+    if (splitIndex === -1) {
+      splitIndex = chunk.lastIndexOf('. ');
+    }
+    if (splitIndex === -1) {
+      splitIndex = chunk.lastIndexOf(' ');
+    }
+    if (splitIndex === -1 || splitIndex === 0) {
+      splitIndex = maxLength;
+    }
+    
+    chunks.push(remainingText.slice(0, splitIndex));
+    remainingText = remainingText.slice(splitIndex).trim();
+  }
+  return chunks;
+}
+
 // Add message event handler
 botClient.on(Events.MessageCreate, async message => {
   if (message.author.bot) {
@@ -44,11 +78,20 @@ botClient.on(Events.MessageCreate, async message => {
       return;
     }
 
-    // Simplified response format
+    // Split response if needed and send in chunks
+    const chunks = splitResponse(response);
+    const prefix = `<@${message.author.id}> from <#${message.channel.id}>:\n`;
+    
+    // Send first chunk with prefix
     await aramidChannel.send({
-      content: `<@${message.author.id}> from <#${message.channel.id}>:\n${response}`,
+      content: prefix + chunks[0],
       allowedMentions: { users: [message.author.id] }
     });
+
+    // Send remaining chunks if any
+    for (let i = 1; i < chunks.length; i++) {
+      await aramidChannel.send({ content: chunks[i] });
+    }
     
     console.log('Response sent successfully');
   } catch (error) {
