@@ -1,11 +1,15 @@
 import { WebhookClient, Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
 import { config } from '../config/config.mjs';
+import { getAIResponse } from '../agents/aramidGeneral.mjs';
 
-// Initialize Discord bot client with basic intents
+// Update intents to include all required permissions
 export const botClient = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildPresences,
   ]
 });
 
@@ -14,9 +18,9 @@ botClient.once(Events.ClientReady, async c => {
   console.log(`Ready! Logged in as ${c.user.tag}`);
   
   // Send startup message to a specific channel if configured
-  if (config.discord.hiveChannel) {
+  if (config.discord.generalChannel) {
     try {
-      const channel = c.channels.cache.get(config.discord.hiveChannel);
+      const channel = c.channels.cache.get(config.discord.generalChannel);
       if (!channel) {
         console.error('Could not find the specified channel');
         return;
@@ -32,6 +36,26 @@ botClient.once(Events.ClientReady, async c => {
     } catch (error) {
       console.error('Error sending startup message:', error.message);
     }
+  }
+});
+
+// Add message event handler
+botClient.on(Events.MessageCreate, async message => {
+  // Ignore bot messages and messages from other channels
+  if (message.author.bot || message.channelId !== config.discord.generalChannel) return;
+
+  try {
+    // Get AI response
+    const response = await getAIResponse(message.content);
+    
+    // Send response and tag the user
+    await message.channel.send({
+      content: `<@${message.author.id}>\n${response}`,
+      allowedMentions: { users: [message.author.id] }
+    });
+  } catch (error) {
+    console.error('Error processing message:', error);
+    await message.channel.send(`<@${message.author.id}> Sorry, I encountered an error processing your message.`);
   }
 });
 

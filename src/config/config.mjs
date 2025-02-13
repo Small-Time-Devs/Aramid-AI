@@ -12,7 +12,7 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: true,
+            xAutoPoster: false,
             devMode: false,
             xAutoResponder: false,
             useDexScreenerLatestTokens: true,
@@ -27,8 +27,8 @@ export const config = {
     cryptoGlobals: {
         // settings to enable or disable trading
         tradeTokenDevMode: false,
-        tradeTokens: true, // This is for the twitter portion of the bot and the auto-trading portion
-        tradeTokensInBackground: true, // This is for the auto-trading portion only
+        tradeTokens: false, // This is for the twitter portion of the bot and the auto-trading portion
+        tradeTokensInBackground: false, // This is for the auto-trading portion only
 
         // Ask AI for advice on open trades
         askForAdviceFromAI: true,
@@ -73,5 +73,6 @@ export const config = {
         twitterChannel: process.env.DISCORD_TWITTER_CHANNEL_ID,
         tradeChannel: process.env.DISCORD_TRADE_CHANNEL_ID,
         hiveChannel: process.env.DISCORD_BOT_CHANNEL_ID,
+        generalChannel: process.env.DISCORD_ARAMID_GENERAL_CHANNEL_ID,
     },
 };
