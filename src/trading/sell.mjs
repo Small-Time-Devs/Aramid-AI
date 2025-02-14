@@ -37,50 +37,23 @@ async function verifyAndCleanupSale(trade, tokenAddress, ownerPublicKey, private
     
     if (remainingBalance > DUST_THRESHOLD) {
       console.log(`Detected ${remainingBalance} tokens remaining after sale, attempting cleanup...`);
-      
-      // Try to sell remaining tokens
-      for (let attempt = 1; attempt <= MAX_SELL_ATTEMPTS; attempt++) {
-        console.log(`Attempt ${attempt} to sell remaining tokens...`);
-        
+      try {
         const sellResult = await executeTradeSell(trade, null, true); // true flag for cleanup
         if (sellResult.success) {
-          await new Promise(resolve => setTimeout(resolve, CONFIRMATION_WAIT_TIME));
-          const finalBalance = await checkTokenBalance(tokenAddress, ownerPublicKey);
-          
-          if (finalBalance <= DUST_THRESHOLD) {
-            break;
-          }
+          console.log('Successfully sold remaining tokens in cleanup');
         }
-        
-        if (attempt === MAX_SELL_ATTEMPTS) {
-          console.log('Failed to sell remaining tokens, will proceed to burn them');
-        }
+      } catch (cleanupError) {
+        console.log('Error selling remaining tokens:', cleanupError.message);
       }
     }
 
-    // Add debug logging for private key
-    console.log('Attempting cleanup with key info:', {
-      keyLength: privateKeyString?.length || 0,
-      ownerPublicKey,
-      tokenAddress
-    });
-
-    // Close token account with error handling
+    // Close token account
     console.log('Attempting to close token account...');
     try {
-      const closed = await closeTokenAccount(
-        tokenAddress, 
-        ownerPublicKey, 
-        privateKeyString
-      );
-      
-      if (closed) {
-        console.log('Successfully closed token account and reclaimed rent');
-      } else {
-        console.log('Failed to close token account');
-      }
-    } catch (error) {
-      console.error('Error during token account closure:', error);
+      await closeTokenAccount(tokenAddress, ownerPublicKey, privateKeyString);
+      console.log('Successfully closed token account and reclaimed rent');
+    } catch (closeError) {
+      console.error('Error closing token account:', closeError.message);
     }
     
     return true;
@@ -160,32 +133,31 @@ export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
       });
 
       if (sellResponse.data.success) {
-        // Calculate trade results
         const priceChangePercent = ((exitPriceSOL - trade.entryPriceSOL) / trade.entryPriceSOL) * 100;
 
-        // Send Discord notification before any other operations
-        const sellNotificationData = {
-          tokenName: trade.tokenName,
-          tokenAddress: trade.tokenAddress,
-          tradeType: trade.tradeType,
-          exitPriceSOL,
-          exitPriceUSD,
-          sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
-          sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
-          reason: priceChangePercent >= trade.targetPercentageGain ? 'Target Gain Reached' :
-                  priceChangePercent <= -trade.targetPercentageLoss ? 'Stop Loss Hit' : 
-                  isCleanup ? 'Cleanup Execution' : 'Manual Exit',
-          txId: sellResponse.data.txId
-        };
-
-        // Send notification first
-        await sendTradeNotification(sellNotificationData, 'SELL');
-
-        // Then proceed with cleanup and archival
+        // Only send notification if this is not a cleanup attempt
         if (!isCleanup) {
+          const sellNotificationData = {
+            tokenName: trade.tokenName,
+            tokenAddress: trade.tokenAddress,
+            tradeType: trade.tradeType,
+            exitPriceSOL,
+            exitPriceUSD,
+            sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
+            sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
+            reason: isCleanup ? 'Cleanup Execution' : 
+                   priceChangePercent >= trade.targetPercentageGain ? 'Target Gain Reached' :
+                   priceChangePercent <= -trade.targetPercentageLoss ? 'Loss Target Reached' : 
+                   'Manual Exit',
+            txId: sellResponse.data.txId
+          };
+
+          await sendTradeNotification(sellNotificationData, 'SELL');
+
+          // Perform cleanup and archive only for main sell
           await verifyAndCleanupSale(
             trade,
-            trade.tokenAddress,
+            trade.tokenAddress, 
             config.cryptoGlobals.publicKey,
             decryptPrivateKey(walletDetails.solPrivateKey)
           );

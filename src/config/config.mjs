@@ -44,7 +44,7 @@ export const config = {
         useJupNewTokens: false, // Supports raydium and pump fun tokens. ( Not great luck so far trading pumpfun tokens with jup still a WIP )
 
         tradeTokensInBackgroundInterval: 30000, // 60 seconds in miliseconds
-        maxOpenTrades: 2,
+        maxOpenTrades: 1,
         solMint: 'So11111111111111111111111111111111111111112',
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
@@ -92,8 +92,8 @@ export const config = {
         ].filter(Boolean),
 
         allowBotMessagesChannels: [
+            process.env.DISCORD_GENERAL_CHAT,
             process.env.DISCORD_TRADE,
-            process.env.DISCORD_TWITTER,
             process.env.DISCORD_PROFIT_SHOWCASE,
             process.env.DISCORD_LOSS_SHOWCASE,
             process.env.DISCORD_FARMING_CHAT,

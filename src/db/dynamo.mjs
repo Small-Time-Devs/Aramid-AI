@@ -296,11 +296,11 @@ export async function updateTradeTargets(tradeId, targetGain, targetLoss) {
 
 export async function moveTradeToPastTrades(trade, sellInfo) {
   try {
-    // First, create record in past trades table
+    // Don't send notification here since it's handled in executeTradeSell
     const pastTradeParams = {
       TableName: 'AramidAI-X-PastTrades',
       Item: {
-        ...trade,  // Spread all existing trade data
+        ...trade,
         exitPriceSOL: sellInfo.exitPriceSOL,
         exitPriceUSD: sellInfo.exitPriceUSD,
         sellPercentageGain: sellInfo.sellPercentageGain,
@@ -311,19 +311,13 @@ export async function moveTradeToPastTrades(trade, sellInfo) {
       }
     };
 
-    // Insert into past trades
-    const putCommand = new PutCommand(pastTradeParams);
-    await docClient.send(putCommand);
+    await docClient.send(new PutCommand(pastTradeParams));
     console.log(`Trade ${trade.tradeId} archived to past trades`);
 
-    // Then delete from active trades
-    const deleteParams = {
+    await docClient.send(new DeleteCommand({
       TableName: 'AramidAI-X-Trades',
       Key: { tradeId: trade.tradeId }
-    };
-
-    const deleteCommand = new DeleteCommand(deleteParams);
-    await docClient.send(deleteCommand);
+    }));
     console.log(`Trade ${trade.tradeId} removed from active trades`);
 
     return true;

@@ -506,7 +506,7 @@ export async function sendTradeStatusUpdate(message, tradeId = null) {
       }];
     }
 
-    const channel = botClient.channels.cache.get(config.discord.tradeChannel);
+    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
     if (channel && channel.isTextBased()) {
       await channel.send({ embeds: [embed] });
       return true;
