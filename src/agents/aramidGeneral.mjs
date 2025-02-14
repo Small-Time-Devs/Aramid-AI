@@ -23,14 +23,18 @@ export async function getAIResponse(userInput, userID) {
       throw new Error('Empty user input');
     }
 
+    // Check if the input contains image URLs
+    const hasImages = userInput.includes('[Images: ');
+    const payload = {
+      userInput,
+      ...(userID && { userID }),
+      context: 'discord-chat',
+      type: hasImages ? 'vision' : 'general'
+    };
+
     console.log('Sending request with input:', userInput);
 
-    const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/aramid-chat', {
-      userInput: userInput,
-      ...(userID && { userID: userID }),
-      context: 'discord-chat',
-      type: 'general'
-    });
+    const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/aramid-chat', payload);
 
     console.log('API Response:', JSON.stringify(response.data, null, 2));
 

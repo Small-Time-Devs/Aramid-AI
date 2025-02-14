@@ -70,14 +70,56 @@ botClient.on(Events.MessageCreate, async message => {
   }
 
   // Add check for empty messages
-  if (!message.content || message.content.trim() === '') {
-    console.log('Message ignored - Empty content');
-    return;
-  }
+  //if (!message.content || message.content.trim() === '') {
+  //  console.log('Message ignored - Empty content');
+  //  return;
+  //}
 
   try {
-    console.log('Processing message:', message.content);
-    const response = await getAIResponse(message.content, message.author.id);
+    let contentToProcess = [];
+    
+    // Add text content if it exists
+    if (message.content?.trim()) {
+      contentToProcess.push(message.content.trim());
+    }
+
+    // Check for image attachments
+    if (message.attachments.size > 0) {
+      const imageAttachments = message.attachments.filter(att => 
+        att.contentType?.startsWith('image/'));
+      
+      if (imageAttachments.size > 0) {
+        const imageUrls = imageAttachments.map(img => img.url);
+        contentToProcess.push(`[Images: ${imageUrls.join(', ')}]`);
+      }
+    }
+
+    // Check for embeds (like Twitter posts)
+    if (message.embeds?.length > 0) {
+      message.embeds.forEach(embed => {
+        if (embed.description) {
+          contentToProcess.push(`[Embed: ${embed.description}]`);
+        }
+        if (embed.title) {
+          contentToProcess.push(`[Title: ${embed.title}]`);
+        }
+        if (embed.fields?.length > 0) {
+          embed.fields.forEach(field => {
+            contentToProcess.push(`[${field.name}: ${field.value}]`);
+          });
+        }
+      });
+    }
+
+    // Only skip if there's nothing to process after checking all possible content
+    if (contentToProcess.length === 0) {
+      console.log('Message ignored - No processable content');
+      return;
+    }
+
+    const textToProcess = contentToProcess.join('\n');
+    console.log('Processing content:', textToProcess);
+    const response = await getAIResponse(textToProcess, message.author.id);
     
     const aramidChannel = botClient.channels.cache.get(config.discord.generalAramidChannel);
     if (!aramidChannel || !aramidChannel.isTextBased()) {
@@ -448,17 +490,28 @@ export async function sendTradeStatusUpdate(message, tradeId = null) {
 
 export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
   try {
-    // Improved advice formatting
-    let formattedAdvice;
-    if (typeof advice === 'object') {
-      // Extract all non-null properties from advice object
-      formattedAdvice = Object.entries(advice)
-        .filter(([_, value]) => value != null)
-        .map(([key, value]) => `${key.charAt(0).toUpperCase() + key.slice(1)}: ${value}`)
-        .join('\n');
-    } else {
-      formattedAdvice = String(advice || 'No advice available');
+    // Format advice object
+    let formattedAdvice = 'No advice available';
+    
+    if (advice) {
+      if (typeof advice === 'object') {
+        // Convert object to readable string
+        formattedAdvice = JSON.stringify(advice, null, 2)
+          .replace(/[{}"]/g, '')
+          .trim()
+          .split('\n')
+          .map(line => line.trim())
+          .filter(line => line) // Remove empty lines
+          .join('\n');
+      } else {
+        formattedAdvice = String(advice);
+      }
     }
+
+    // Format trade details
+    const tradeInfo = `Entry Price: ${tradeDetails.entryPrice || 'N/A'}\n` +
+                     `Target Gain: ${tradeDetails.targetGain || 'N/A'}%\n` +
+                     `Stop Loss: ${tradeDetails.targetLoss || 'N/A'}%`;
 
     const embed = {
       title: '🧠 AI Trading Advice',
@@ -470,16 +523,20 @@ export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
           inline: true
         },
         {
-          name: 'Advice',
-          value: formattedAdvice || 'No advice provided',
+          name: 'Contract Address',
+          value: tradeDetails.contractAddress || 'Unknown',
+          inline: true
+        },
+        {
+          name: 'Trade Parameters',
+          value: tradeInfo,
           inline: false
         },
         {
-          name: 'Contract Address',
-          value: tradeDetails.contractAddress || 'Unknown',
+          name: 'AI Advice',
+          value: formattedAdvice,
           inline: false
         }
-        // ...rest of fields remain unchanged...
       ],
       timestamp: new Date().toISOString(),
       footer: {
@@ -491,6 +548,7 @@ export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
     if (!channel || !channel.isTextBased()) return false;
 
     await channel.send({ embeds: [embed] });
+    console.log('AI advice sent:', { tradeId, formattedAdvice, tradeDetails });
     return true;
   } catch (error) {
     console.error('Error sending AI advice update:', error);

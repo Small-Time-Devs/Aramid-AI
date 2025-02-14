@@ -12,7 +12,7 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: false,
+            xAutoPoster: true,
             devMode: false,
             xAutoResponder: false,
             useDexScreenerLatestTokens: true,
@@ -27,7 +27,7 @@ export const config = {
     cryptoGlobals: {
         // settings to enable or disable trading
         tradeTokenDevMode: false,
-        tradeTokens: false, // This is for the twitter portion of the bot and the auto-trading portion
+        tradeTokens: true, // This is for the twitter portion of the bot and the auto-trading portion
         tradeTokensInBackground: false, // This is for the auto-trading portion only
 
         // Ask AI for advice on open trades
@@ -93,6 +93,11 @@ export const config = {
 
         allowBotMessagesChannels: [
             process.env.DISCORD_TRADE,
+            process.env.DISCORD_TWITTER,
+            process.env.DISCORD_PROFIT_SHOWCASE,
+            process.env.DISCORD_LOSS_SHOWCASE,
+            process.env.DISCORD_FARMING_CHAT,
+            process.env.DISCORD_MEME_CHAT,
             // Add any other channels where bot messages should be allowed
         ].filter(Boolean),
     },
