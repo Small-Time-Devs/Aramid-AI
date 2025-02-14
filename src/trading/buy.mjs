@@ -8,10 +8,16 @@ import { fetchTokenPairs, fetchTokenNameAndSymbol } from '../utils/apiUtils.mjs'
 import { checkSolanaBalance } from '../utils/solanaUtils.mjs';
 import { sendTradeNotification } from '../utils/discord.mjs';
 
-export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeType) {
+export async function executeTradeBuy(investmentChoice, targetGain, targetLoss, tradeType = 'QUICK_PROFIT') {
+  let result = {
+    success: false,
+    error: null,
+    notificationSent: false // Add flag to track notification status
+  };
+
   try {
     // Check for existing active trade with same token
-    const existingTrade = await findActiveTradeByToken(tweetData.tokenData.tokenAddress);
+    const existingTrade = await findActiveTradeByToken(investmentChoice.tokenData.tokenAddress);
     
     if (existingTrade) {
       console.log('Found existing active trade for token:', {
@@ -21,7 +27,7 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeTy
       });
 
       // Execute new buy order with tweet data
-      const buyResult = await executeBuyOrder(tweetData, targetGain, targetLoss, tradeType);
+      const buyResult = await executeBuyOrder(investmentChoice, targetGain, targetLoss, tradeType);
       if (!buyResult.success) {
         return buyResult;
       }
@@ -41,8 +47,8 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeTy
 
       // Prepare notification data
       const buyNotificationData = {
-        tokenName: tweetData.tokenData.tokenName,
-        tokenAddress: tweetData.tokenData.tokenAddress,
+        tokenName: investmentChoice.tokenData.tokenName,
+        tokenAddress: investmentChoice.tokenData.tokenAddress,
         tradeType: tradeType,
         amountInvested: buyResult.amountInvested,
         entryPriceSOL: parseFloat(buyResult.currentPrice),
@@ -52,8 +58,11 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeTy
         txId: buyResult.txId
       };
 
-      // Send buy notification
-      await sendTradeNotification(buyNotificationData, 'BUY');
+      // Only send notification if not already sent
+      if (!result.notificationSent) {
+        await sendTradeNotification(buyNotificationData, 'BUY');
+        result.notificationSent = true;
+      }
 
       return {
         success: true,
@@ -64,13 +73,13 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeTy
     }
 
     // No existing trade found, proceed with new trade
-    const buyResult = await executeBuyOrder(tweetData, targetGain, targetLoss, tradeType);
+    const buyResult = await executeBuyOrder(investmentChoice, targetGain, targetLoss, tradeType);
 
     if (buyResult.success) {
       // Prepare notification data
       const buyNotificationData = {
-        tokenName: tweetData.tokenData.tokenName,
-        tokenAddress: tweetData.tokenData.tokenAddress,
+        tokenName: investmentChoice.tokenData.tokenName,
+        tokenAddress: investmentChoice.tokenData.tokenAddress,
         tradeType: tradeType,
         amountInvested: buyResult.amountInvested,
         entryPriceSOL: parseFloat(buyResult.currentPrice),
@@ -80,8 +89,11 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeTy
         txId: buyResult.txId
       };
 
-      // Send buy notification
-      await sendTradeNotification(buyNotificationData, 'BUY');
+      // Only send notification if not already sent
+      if (!result.notificationSent) {
+        await sendTradeNotification(buyNotificationData, 'BUY');
+        result.notificationSent = true;
+      }
     }
 
     return buyResult;
@@ -91,7 +103,14 @@ export async function executeTradeBuy(tweetData, targetGain, targetLoss, tradeTy
   }
 }
 
-export async function executeBackgroundTradeBuy(investmentChoice, targetGain, targetLoss, tradeType) {
+// Apply same changes to executeBackgroundTradeBuy function
+export async function executeBackgroundTradeBuy(investmentChoice, targetGain, targetLoss, tradeType = 'QUICK_PROFIT') {
+  let result = {
+    success: false,
+    error: null,
+    notificationSent: false
+  };
+
   try {
     // Check for existing active trade with same token
     const existingTrade = await findActiveTradeByToken(investmentChoice.tokenData.tokenAddress);
@@ -135,8 +154,11 @@ export async function executeBackgroundTradeBuy(investmentChoice, targetGain, ta
         txId: buyResult.txId
       };
 
-      // Send buy notification
-      await sendTradeNotification(buyNotificationData, 'BUY');
+      // Only send notification if not already sent
+      if (!result.notificationSent) {
+        await sendTradeNotification(buyNotificationData, 'BUY');
+        result.notificationSent = true;
+      }
 
       return {
         success: true,
@@ -163,8 +185,11 @@ export async function executeBackgroundTradeBuy(investmentChoice, targetGain, ta
         txId: buyResult.txId
       };
 
-      // Send buy notification
-      await sendTradeNotification(buyNotificationData, 'BUY');
+      // Only send notification if not already sent
+      if (!result.notificationSent) {
+        await sendTradeNotification(buyNotificationData, 'BUY');
+        result.notificationSent = true;
+      }
     }
 
     return buyResult;

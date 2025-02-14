@@ -185,8 +185,38 @@ botClient.once(Events.ClientReady, async c => {
   }
 });
 
+// Add cache for recent notifications
+const recentNotifications = new Map();
+
 export async function sendTradeNotification(tradeData, type = 'BUY') {
   try {
+    // Create unique key for this notification
+    const notificationKey = `${type}-${tradeData.tokenAddress}-${Date.now()}`;
+    
+    // Check if similar notification was sent in last 5 seconds
+    const recentKey = Array.from(recentNotifications.keys()).find(key => {
+      const [prevType, prevToken] = key.split('-');
+      return prevType === type && 
+             prevToken === tradeData.tokenAddress && 
+             (Date.now() - recentNotifications.get(key)) < 5000;
+    });
+
+    if (recentKey) {
+      console.log('Duplicate notification prevented');
+      return false;
+    }
+
+    // Store notification timestamp
+    recentNotifications.set(notificationKey, Date.now());
+
+    // Clean old entries
+    const fiveSecondsAgo = Date.now() - 5000;
+    for (const [key, timestamp] of recentNotifications.entries()) {
+      if (timestamp < fiveSecondsAgo) {
+        recentNotifications.delete(key);
+      }
+    }
+
     // Create embed
     const embed = createTradeEmbed(tradeData, type);
 
@@ -488,6 +518,28 @@ export async function sendTradeStatusUpdate(message, tradeId = null) {
   }
 }
 
+// Add helper function to split long advice
+function splitAdvice(advice, maxLength = 1000) {
+  const parts = [];
+  let currentPart = '';
+  const lines = advice.split('\n');
+
+  for (const line of lines) {
+    if ((currentPart + '\n' + line).length > maxLength && currentPart) {
+      parts.push(currentPart);
+      currentPart = line;
+    } else {
+      currentPart = currentPart ? currentPart + '\n' + line : line;
+    }
+  }
+  
+  if (currentPart) {
+    parts.push(currentPart);
+  }
+  
+  return parts;
+}
+
 export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
   try {
     // Format advice object
@@ -513,7 +565,8 @@ export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
                      `Target Gain: ${tradeDetails.targetGain || 'N/A'}%\n` +
                      `Stop Loss: ${tradeDetails.targetLoss || 'N/A'}%`;
 
-    const embed = {
+    // Create base embed
+    const baseEmbed = {
       title: '🧠 AI Trading Advice',
       color: 0x9933ff,
       fields: [
@@ -531,11 +584,6 @@ export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
           name: 'Trade Parameters',
           value: tradeInfo,
           inline: false
-        },
-        {
-          name: 'AI Advice',
-          value: formattedAdvice,
-          inline: false
         }
       ],
       timestamp: new Date().toISOString(),
@@ -544,11 +592,48 @@ export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
       }
     };
 
-    const channel = botClient.channels.cache.get(config.discord.tradeChannel);
+    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
     if (!channel || !channel.isTextBased()) return false;
 
-    await channel.send({ embeds: [embed] });
-    console.log('AI advice sent:', { tradeId, formattedAdvice, tradeDetails });
+    // Split advice into parts if needed
+    const adviceParts = splitAdvice(formattedAdvice);
+
+    // Send first part with base embed
+    if (adviceParts.length > 0) {
+      const firstEmbed = {
+        ...baseEmbed,
+        fields: [
+          ...baseEmbed.fields,
+          {
+            name: 'AI Advice (Part 1)',
+            value: adviceParts[0],
+            inline: false
+          }
+        ]
+      };
+      await channel.send({ embeds: [firstEmbed] });
+    }
+
+    // Send remaining parts as follow-up messages
+    for (let i = 1; i < adviceParts.length; i++) {
+      const followUpEmbed = {
+        color: 0x9933ff,
+        fields: [
+          {
+            name: `AI Advice (Part ${i + 1})`,
+            value: adviceParts[i],
+            inline: false
+          }
+        ]
+      };
+      await channel.send({ embeds: [followUpEmbed] });
+    }
+
+    console.log('AI advice sent:', { 
+      tradeId, 
+      partsCount: adviceParts.length,
+      tradeDetails 
+    });
     return true;
   } catch (error) {
     console.error('Error sending AI advice update:', error);

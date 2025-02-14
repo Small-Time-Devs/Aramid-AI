@@ -10,6 +10,7 @@ import { config } from '../config/config.mjs';
 import { config as dotEnvConfig } from 'dotenv';
 import { checkTokenBalance } from '../utils/solanaUtils.mjs';
 import { sendTradeNotification, sendErrorNotification, sendTradeStatusUpdate, sendAIAdviceUpdate } from '../utils/discord.mjs';
+import { getTradeAdvice } from '../agents/tradeAdvice.mjs';
 
 dotEnvConfig();
 
@@ -121,34 +122,23 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
         const timeSinceLastCheck = currentTime - lastCheckTime;
 
         if (timeSinceLastCheck >= AI_ADVICE_INTERVAL) {
-          const advice = await autoTradingAdvice(
-            'solana',
-            trade.tokenAddress,
-            trade.entryPriceSOL,
-            trade.targetPercentageGain,
-            trade.targetPercentageLoss
-          );
-          
+          const parsedAdvice = await getTradeAdvice(trade, currentPrice);
           lastAICheckTimes.set(tradeId, currentTime);
-          
-          // Send AI advice to Discord
-          await sendAIAdviceUpdate(trade.tradeId, String(advice), {
-            contractAddress: trade.tokenAddress,
-            entryPrice: trade.entryPriceSOL,
-            targetGain: trade.targetPercentageGain,
-            targetLoss: trade.targetPercentageLoss
-          });
 
-          console.log(`AI advice for ${trade.tradeId}: ${advice} CA: ${trade.tokenAddress} Entry Price: ${trade.entryPriceSOL} Target Gain: ${trade.targetPercentageGain} Target Loss: ${trade.targetPercentageLoss}`);
-
-          // Handle advice - ensure advice is a string before using startsWith
-          if (typeof advice === 'string') {
-            if (advice.startsWith('Sell Now')) {
+          // Handle advice actions
+          switch (parsedAdvice.action) {
+            case 'SELL':
               await executeSellOrder(trade, currentPrice);
               return;
-            } else if (advice.startsWith('Adjust Trade')) {
-              await handleTradeAdjustment(trade, advice);
-            }
+            case 'ADJUST':
+              if (parsedAdvice.adjustments) {
+                await updateTradeTargets(trade.tradeId, parsedAdvice.adjustments);
+              }
+              break;
+            case 'HOLD':
+            default:
+              // Continue monitoring
+              break;
           }
         }
       }
