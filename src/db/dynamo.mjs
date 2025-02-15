@@ -276,18 +276,28 @@ export async function updateTradeAmounts(tradeId, additionalAmount, additionalTo
 export async function updateTradeTargets(tradeId, targetGain, targetLoss) {
   try {
     const params = {
-      TableName: config.aws.tradesTableName,
+      TableName: 'AramidAI-X-Trades',
       Key: { tradeId },
-      UpdateExpression: "set targetPercentageGain = :g, targetPercentageLoss = :l",
+      UpdateExpression: 'set targetPercentageGain = :g, targetPercentageLoss = :l',
       ExpressionAttributeValues: {
-        ":g": targetGain,
-        ":l": targetLoss
+        ':g': targetGain,
+        ':l': targetLoss
       },
-      ReturnValues: "ALL_NEW"
+      ReturnValues: 'ALL_NEW'
     };
 
-    const result = await dynamoDbDoc.send(new UpdateCommand(params));
-    return result.Attributes;
+    const command = new UpdateCommand(params);
+    const response = await docClient.send(command);
+    
+    console.log('Trade targets updated:', {
+      tradeId,
+      newTargets: {
+        gain: targetGain,
+        loss: targetLoss
+      }
+    });
+    
+    return response.Attributes;
   } catch (error) {
     console.error('Error updating trade targets:', error);
     throw error;

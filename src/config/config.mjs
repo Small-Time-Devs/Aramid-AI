@@ -28,7 +28,7 @@ export const config = {
         // settings to enable or disable trading
         tradeTokenDevMode: false,
         tradeTokens: true, // This is for the twitter portion of the bot and the auto-trading portion
-        tradeTokensInBackground: false, // This is for the auto-trading portion only
+        tradeTokensInBackground: true, // This is for the auto-trading portion only
 
         // Ask AI for advice on open trades
         askForAdviceFromAI: true,

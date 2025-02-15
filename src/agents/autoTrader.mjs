@@ -12,10 +12,9 @@ import { sendAnalysisMessage, sendRetryNotification } from '../utils/discord.mjs
 export async function generateTradeAnswer() {
     let investmentChoice;
     try {
-      // Step 2
         investmentChoice = await pickToken();
         if (config.cryptoGlobals.tradeTokenDevMode) {
-        console.log("Generated Investment Decision:", investmentChoice);
+            console.log("Generated Investment Decision:", investmentChoice);
         }
 
         // Skip if the investment decision is a "Pass"
@@ -24,11 +23,15 @@ export async function generateTradeAnswer() {
             return null;
         }
 
-        // Validate required fields
-        if (!investmentChoice?.agetnAnalysisComment || 
-            !investmentChoice?.agentInvestmentComment || 
+        // Updated validation to match new API response format
+        if (!investmentChoice?.tokenData || 
+            !investmentChoice?.agentAnalysisComment ||  // Fixed typo from agetnAnalysisComment
             !investmentChoice?.agentInvestmentDecisionComment) {
-            console.log("Invalid investment choice - missing required fields");
+            console.log("Invalid investment choice - missing required fields:", {
+                hasTokenData: !!investmentChoice?.tokenData,
+                hasAnalysis: !!investmentChoice?.agentAnalysisComment,
+                hasDecision: !!investmentChoice?.agentInvestmentDecisionComment
+            });
             return null;
         }
 
@@ -58,14 +61,11 @@ async function pickToken() {
         chainId: tokenData.chainId
     });
 
-    // Step 4
     const tokenAddress = tokenData.tokenAddress;
     const chainId = tokenData.chainId;
-
-    // Make the const for the api specific request
     const contractAddress = tokenAddress;
     const chain = chainId;
-    // If the response is good for the prompt then we can move on to the next step of calling the api with the response.
+
     let agentResponses;
     try {
         const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/autoTrading-agent-chat', {chain, contractAddress });
@@ -78,39 +78,34 @@ async function pickToken() {
         throw new Error("Failed to connect to external API.");
     }
 
-    if (!agentResponses || agentResponses.length < 2) {
+    if (!agentResponses || !Array.isArray(agentResponses) || agentResponses.length === 0) {
         await sendRetryNotification();
         throw new Error("Invalid agent responses received from API.");
     }
 
-    const anaylstAgent = agentResponses[0];
-    const agetnAnalysisComment = anaylstAgent.response;
-    const investmentAgent = agentResponses[1];
-    const agentInvestmentComment = investmentAgent.response;
-    const agentInvestmentDecisionComment = investmentAgent.decision;
+    const tokenSleuthAgent = agentResponses[0];
+    const agentAnalysisComment = tokenSleuthAgent.response;
+    const agentInvestmentDecisionComment = tokenSleuthAgent.decision;
 
-    // Send analysis results to Discord
+    // Send full analysis to Discord
     await sendAnalysisMessage('analysis', {
-        analysis: agetnAnalysisComment,
-        investment: agentInvestmentComment,
+        analysis: agentAnalysisComment,
         decision: agentInvestmentDecisionComment
     });
 
     if (config.cryptoGlobals.tradeTokenDevMode) {
-      console.log("Analyst Response:", agetnAnalysisComment);
-      console.log("Investment Response:", agentInvestmentComment);
-      console.log("Investment Decision:", agentInvestmentDecisionComment);
+        console.log("Analysis Response:", agentAnalysisComment);
+        console.log("Investment Decision:", agentInvestmentDecisionComment);
     }
 
     if (!agentInvestmentDecisionComment) {
-        console.error("Invalid investment agent decision, generating again.");
+        console.error("Invalid agent decision, generating again.");
         return await pickToken();
     }
 
     const investmentChoice = {
-        agetnAnalysisComment,
-        agentInvestmentComment,
-        agentInvestmentDecisionComment,
+        agentAnalysisComment: agentAnalysisComment,        // Fixed property name
+        agentInvestmentDecisionComment: agentInvestmentDecisionComment,
         tokenData,
     };
 

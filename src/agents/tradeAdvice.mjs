@@ -1,5 +1,6 @@
 import { autoTradingAdvice } from '../utils/apiUtils.mjs';
 import { sendAIAdviceUpdate } from '../utils/discord.mjs';
+import { updateTradeTargets } from '../db/dynamo.mjs';
 
 export async function getTradeAdvice(trade, currentPrice) {
   try {
@@ -11,15 +12,33 @@ export async function getTradeAdvice(trade, currentPrice) {
       trade.targetPercentageLoss
     );
 
-    // Format and parse the advice
+    // Parse the advice response
     const parsedAdvice = parseAdviceResponse(advice);
     
+    // If advice is to adjust trade, update the targets in DynamoDB
+    if (parsedAdvice.action === 'ADJUST' && parsedAdvice.adjustments) {
+      try {
+        await updateTradeTargets(
+          trade.tradeId,
+          parsedAdvice.adjustments.targetGain,
+          parsedAdvice.adjustments.stopLoss
+        );
+        console.log('Successfully updated trade targets:', {
+          tradeId: trade.tradeId,
+          newTargetGain: parsedAdvice.adjustments.targetGain,
+          newStopLoss: parsedAdvice.adjustments.stopLoss
+        });
+      } catch (error) {
+        console.error('Failed to update trade targets:', error);
+      }
+    }
+
     // Send detailed advice to Discord
     await sendFormattedAdvice(trade.tradeId, parsedAdvice, {
       contractAddress: trade.tokenAddress,
       entryPrice: trade.entryPriceSOL,
-      targetGain: trade.targetPercentageGain,
-      targetLoss: trade.targetPercentageLoss,
+      targetGain: parsedAdvice.adjustments?.targetGain || trade.targetPercentageGain,
+      targetLoss: parsedAdvice.adjustments?.stopLoss || trade.targetPercentageLoss,
       currentPrice: currentPrice
     });
 
@@ -35,32 +54,76 @@ export async function getTradeAdvice(trade, currentPrice) {
 }
 
 function parseAdviceResponse(advice) {
-  if (!advice) return defaultResponse();
+  try {
+    // Parse the JSON if it's a string
+    const parsedData = typeof advice === 'string' ? JSON.parse(advice) : advice;
+    
+    // Handle both array and single object formats
+    const agentAdvice = Array.isArray(parsedData) ? parsedData[0] : parsedData;
+    
+    if (!agentAdvice?.decision) {
+      console.log('Invalid advice format:', advice);
+      return defaultResponse();
+    }
 
-  // Extract the Final Output section
-  const finalOutputMatch = advice.match(/\*\*Final Output\*\*:\s*(.*?)(?=\n|$)/s);
-  const finalOutput = finalOutputMatch ? finalOutputMatch[1].trim() : '';
+    const { response, decision } = agentAdvice;
 
-  // Determine action based on Final Output
-  let action = 'HOLD';
-  let adjustments = null;
-  let reason = '';
+    // Parse decision format: "Adjust Trade: targetPercentageGain: 15, targetPercentageLoss: 10"
+    const adjustMatch = decision.match(/Adjust Trade:\s*targetPercentageGain:\s*(\d+),\s*targetPercentageLoss:\s*(\d+)/i);
+    const sellMatch = decision.match(/Sell Now/i);
 
-  if (finalOutput.startsWith('Sell Now')) {
-    action = 'SELL';
-    reason = extractReason(finalOutput);
-  } else if (finalOutput.startsWith('Adjust Trade')) {
-    action = 'ADJUST';
-    adjustments = extractAdjustmentsFromFinalOutput(finalOutput);
+    let action = 'HOLD';
+    let adjustments = null;
+
+    if (adjustMatch) {
+      action = 'ADJUST';
+      adjustments = {
+        targetGain: parseInt(adjustMatch[1]),
+        stopLoss: parseInt(adjustMatch[2])
+      };
+      console.log('Found trade adjustments:', adjustments);
+    } else if (sellMatch) {
+      action = 'SELL';
+    }
+
+    console.log('Parsed advice:', {
+      action,
+      hasAdjustments: !!adjustments,
+      decision
+    });
+
+    return {
+      action,
+      reason: response,
+      adjustments,
+      formattedAdvice: response,
+      rawAdvice: JSON.stringify(agentAdvice, null, 2),
+      decision: decision
+    };
+  } catch (error) {
+    console.error('Error parsing advice response:', error);
+    console.error('Raw advice received:', advice);
+    return defaultResponse();
   }
+}
 
-  return {
-    action,
-    reason,
-    adjustments,
-    formattedAdvice: formatDetailedAdvice(advice),
-    rawAdvice: finalOutput
+async function sendFormattedAdvice(tradeId, parsedAdvice, tradeDetails) {
+  const formattedAdvice = {
+    title: '🤖 Trading Analysis & Advice',
+    details: parsedAdvice.reason,
+    currentStatus: `Current Price: ${tradeDetails.currentPrice} SOL\n` +
+                  `Entry Price: ${tradeDetails.entryPrice} SOL\n` +
+                  `Target Gain: ${tradeDetails.targetGain}%\n` +
+                  `Stop Loss: ${tradeDetails.targetLoss}%`,
+    recommendation: `Decision: ${parsedAdvice.decision}\n` +
+                   (parsedAdvice.adjustments ? 
+                     `New Targets:\n` +
+                     `• Target Gain: ${parsedAdvice.adjustments.targetGain}%\n` +
+                     `• Stop Loss: ${parsedAdvice.adjustments.stopLoss}%` : 
+                     `Action: ${parsedAdvice.action}`)
   };
+
+  await sendAIAdviceUpdate(tradeId, formattedAdvice, tradeDetails);
 }
 
 function extractAdjustmentsFromFinalOutput(finalOutput) {
@@ -80,52 +143,23 @@ function extractAdjustmentsFromFinalOutput(finalOutput) {
 }
 
 function formatDetailedAdvice(advice) {
-  // Split the advice into sections
-  const sections = advice.split(/\d+\.\s+\*\*/).filter(Boolean);
-  
-  // Process and truncate each section to fit Discord limits
-  const processedSections = sections.map(section => {
-    const title = section.match(/^([^:]+):/);
-    if (title) {
-      const content = section.replace(title[0], '').trim();
-      // Truncate content if needed
-      const truncatedContent = content.length > 900 ? 
-        content.substring(0, 900) + '...(truncated)' : 
-        content;
-      return `${title[1]}:\n${truncatedContent}\n`;
-    }
-    return section.length > 900 ? 
-      section.substring(0, 900) + '...(truncated)' : 
-      section.trim();
-  });
+  // Keep all section headers and content
+  let formatted = advice
+    .split(/(\d+\.\s+\*\*[^*]+\*\*:)/)
+    .filter(Boolean)
+    .map(part => part.trim())
+    .join('\n');
 
-  return processedSections.join('\n');
-}
+  // Add a clear separator before the decision
+  const decisionMatch = formatted.match(/((?:Adjust Trade|Hold|Sell Now).*$)/m);
+  if (decisionMatch) {
+    formatted = formatted.replace(
+      decisionMatch[0],
+      '\n**Decision:**\n' + decisionMatch[0]
+    );
+  }
 
-async function sendFormattedAdvice(tradeId, parsedAdvice, tradeDetails) {
-  // Truncate and split long text fields
-  const details = truncateField(parsedAdvice.formattedAdvice, 1000);
-  const recommendation = truncateField(
-    `Action: ${parsedAdvice.action}\n` +
-    `${parsedAdvice.reason ? 'Reason: ' + parsedAdvice.reason + '\n' : ''}` +
-    (parsedAdvice.adjustments ? 
-      `Suggested Adjustments:\n` +
-      `- New Target Gain: ${parsedAdvice.adjustments.targetGain}%\n` +
-      `- New Stop Loss: ${parsedAdvice.adjustments.stopLoss}%` : ''),
-    1000
-  );
-
-  const formattedAdvice = {
-    title: '🤖 Trading Analysis & Advice',
-    details,
-    currentStatus: `Current Price: ${tradeDetails.currentPrice} SOL\n` +
-                  `Entry Price: ${tradeDetails.entryPrice} SOL\n` +
-                  `Target Gain: ${tradeDetails.targetGain}%\n` +
-                  `Stop Loss: ${tradeDetails.targetLoss}%`,
-    recommendation
-  };
-
-  await sendAIAdviceUpdate(tradeId, formattedAdvice, tradeDetails);
+  return formatted;
 }
 
 function truncateField(text, maxLength) {

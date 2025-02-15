@@ -431,21 +431,33 @@ export async function sendAnalysisMessage(type, data) {
         embed.color = 0x9b59b6; // Purple
         embed.fields = [
           {
-            name: 'Analyst Review',
-            value: data.analysis || 'No analysis provided',
-            inline: false
-          },
-          {
-            name: 'Investment Recommendation',
-            value: data.investment || 'No recommendation provided',
-            inline: false
-          },
-          {
-            name: 'Decision',
-            value: data.decision || 'No decision provided',
+            name: 'Full Analysis',
+            value: (data.analysis || 'No analysis provided').substring(0, 1024),
             inline: false
           }
         ];
+
+        // If analysis is longer than 1024 characters, add additional fields
+        if (data.analysis && data.analysis.length > 1024) {
+          const remainingAnalysis = data.analysis.substring(1024);
+          const chunks = splitAdvice(remainingAnalysis, 1024);
+          chunks.forEach((chunk, index) => {
+            embed.fields.push({
+              name: `Analysis (continued ${index + 1})`,
+              value: chunk,
+              inline: false
+            });
+          });
+        }
+
+        // Add the decision field
+        if (data.decision) {
+          embed.fields.push({
+            name: 'Investment Decision',
+            value: data.decision,
+            inline: false
+          });
+        }
         break;
     }
 
@@ -542,32 +554,11 @@ function splitAdvice(advice, maxLength = 1000) {
 
 export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
   try {
-    // Format advice object
-    let formattedAdvice = 'No advice available';
-    
-    if (advice) {
-      if (typeof advice === 'object') {
-        // Convert object to readable string
-        formattedAdvice = JSON.stringify(advice, null, 2)
-          .replace(/[{}"]/g, '')
-          .trim()
-          .split('\n')
-          .map(line => line.trim())
-          .filter(line => line) // Remove empty lines
-          .join('\n');
-      } else {
-        formattedAdvice = String(advice);
-      }
-    }
+    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
+    if (!channel || !channel.isTextBased()) return false;
 
-    // Format trade details
-    const tradeInfo = `Entry Price: ${tradeDetails.entryPrice || 'N/A'}\n` +
-                     `Target Gain: ${tradeDetails.targetGain || 'N/A'}%\n` +
-                     `Stop Loss: ${tradeDetails.targetLoss || 'N/A'}%`;
-
-    // Create base embed
     const baseEmbed = {
-      title: '🧠 AI Trading Advice',
+      title: '🧠 AI Trading Analysis',
       color: 0x9933ff,
       fields: [
         {
@@ -581,8 +572,8 @@ export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
           inline: true
         },
         {
-          name: 'Trade Parameters',
-          value: tradeInfo,
+          name: 'Current Status',
+          value: advice.currentStatus,
           inline: false
         }
       ],
@@ -592,36 +583,36 @@ export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
       }
     };
 
-    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
-    if (!channel || !channel.isTextBased()) return false;
-
-    // Split advice into parts if needed
-    const adviceParts = splitAdvice(formattedAdvice);
-
-    // Send first part with base embed
-    if (adviceParts.length > 0) {
-      const firstEmbed = {
-        ...baseEmbed,
-        fields: [
-          ...baseEmbed.fields,
-          {
-            name: 'AI Advice (Part 1)',
-            value: adviceParts[0],
-            inline: false
-          }
-        ]
-      };
-      await channel.send({ embeds: [firstEmbed] });
+    // Split long analysis into chunks if needed
+    const analysisChunks = splitAdvice(advice.details || 'No analysis available', 1024);
+    
+    // Add first chunk to base embed
+    if (analysisChunks.length > 0) {
+      baseEmbed.fields.push({
+        name: 'Analysis',
+        value: analysisChunks[0],
+        inline: false
+      });
     }
 
-    // Send remaining parts as follow-up messages
-    for (let i = 1; i < adviceParts.length; i++) {
+    // Add recommendation
+    baseEmbed.fields.push({
+      name: 'Decision',
+      value: advice.recommendation,
+      inline: false
+    });
+
+    // Send base embed
+    await channel.send({ embeds: [baseEmbed] });
+
+    // Send remaining chunks if any
+    for (let i = 1; i < analysisChunks.length; i++) {
       const followUpEmbed = {
         color: 0x9933ff,
         fields: [
           {
-            name: `AI Advice (Part ${i + 1})`,
-            value: adviceParts[i],
+            name: `Analysis (continued ${i + 1})`,
+            value: analysisChunks[i],
             inline: false
           }
         ]
@@ -629,11 +620,6 @@ export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
       await channel.send({ embeds: [followUpEmbed] });
     }
 
-    console.log('AI advice sent:', { 
-      tradeId, 
-      partsCount: adviceParts.length,
-      tradeDetails 
-    });
     return true;
   } catch (error) {
     console.error('Error sending AI advice update:', error);

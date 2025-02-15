@@ -40,7 +40,7 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
 
   await new Promise(resolve => setTimeout(resolve, initialDelay));
 
-  const monitor = async () => {
+  async function monitor() {
     try {
       if (!canMakeRequest()) {
         console.log('Rate limit approaching, waiting...');
@@ -122,23 +122,38 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
         const timeSinceLastCheck = currentTime - lastCheckTime;
 
         if (timeSinceLastCheck >= AI_ADVICE_INTERVAL) {
-          const parsedAdvice = await getTradeAdvice(trade, currentPrice);
-          lastAICheckTimes.set(tradeId, currentTime);
+          try {
+            const parsedAdvice = await getTradeAdvice(trade, currentPrice);
+            lastAICheckTimes.set(tradeId, currentTime);
 
-          // Handle advice actions
-          switch (parsedAdvice.action) {
-            case 'SELL':
-              await executeSellOrder(trade, currentPrice);
-              return;
-            case 'ADJUST':
-              if (parsedAdvice.adjustments) {
-                await updateTradeTargets(trade.tradeId, parsedAdvice.adjustments);
+            // Only act on valid advice responses
+            if (parsedAdvice && parsedAdvice.action) {
+              switch (parsedAdvice.action) {
+                case 'SELL':
+                  console.log('AI advised to sell:', parsedAdvice.reason);
+                  await executeSellOrder(trade, currentPrice, 'AI Advised Sale');
+                  return;
+                case 'ADJUST':
+                  if (parsedAdvice.adjustments) {
+                    console.log('Adjusting trade targets:', parsedAdvice.adjustments);
+                    await updateTradeTargets(
+                      trade.tradeId,
+                      parsedAdvice.adjustments.targetGain,
+                      parsedAdvice.adjustments.stopLoss
+                    );
+                  }
+                  break;
+                case 'HOLD':
+                  console.log('AI advised to hold position');
+                  break;
+                default:
+                  console.log('Unknown AI advice action:', parsedAdvice.action);
+                  break;
               }
-              break;
-            case 'HOLD':
-            default:
-              // Continue monitoring
-              break;
+            }
+          } catch (error) {
+            console.error('Error processing AI advice:', error);
+            // Continue monitoring even if AI advice fails
           }
         }
       }
@@ -149,9 +164,9 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
       console.error(`Error monitoring trade ${tradeId}:`, error.message);
       setTimeout(() => monitor(), PRICE_CHECK_INTERVAL); // Keep monitoring even after errors
     }
-  };
+  }
 
-  async function executeSellOrder(trade, currentPrice) {
+  async function executeSellOrder(trade, currentPrice, reason = null) {
     const sellResult = await executeTradeSell(trade, currentPrice);
     if (!sellResult.success) {
       await sendErrorNotification('Failed to execute sell order', {
@@ -174,7 +189,7 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
       exitPriceUSD: sellResult.exitPriceUSD,
       sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
       sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
-      reason: sellResult.reason || `${priceChangePercent > 0 ? 'Profit' : 'Loss'} Target Reached`,
+      reason: reason || sellResult.reason || `${priceChangePercent > 0 ? 'Profit' : 'Loss'} Target Reached`,
       txId: sellResult.txId
     };
 
