@@ -58,7 +58,19 @@ function splitResponse(response, maxLength = 1900) { // Using 1900 to leave room
 
 // Add message event handler
 botClient.on(Events.MessageCreate, async message => {
-  // Check if message is from a bot and in a channel that should filter bot messages
+  // Only ignore own messages and error messages outside of trade channel
+  if ((message.channelId !== config.discord.tradeChannel) && 
+      (message.author.id === botClient.user.id 
+      || message.content.includes('🟢 Bot is back online')
+      //|| message.content.startsWith('🔄 Learning and Retrying')
+      //|| message.content.startsWith('📊 Trade Status Update')
+      //|| message.content.startsWith('🧠 AI Trading Analysis')
+      //|| message.content.startsWith('🐦 New Tweet Posted')
+      || message.content.includes('Sorry, I encountered an error processing your message'))
+      && config.discord.generalAramidChannel) {
+    return;
+  }
+
   if (message.author.bot && !config.discord.allowBotMessagesChannels.includes(message.channelId)) {
     console.log('Message ignored - Bot message');
     return;
@@ -68,12 +80,6 @@ botClient.on(Events.MessageCreate, async message => {
     console.log('Message ignored - Not in monitored channels');
     return;
   }
-
-  // Add check for empty messages
-  //if (!message.content || message.content.trim() === '') {
-  //  console.log('Message ignored - Empty content');
-  //  return;
-  //}
 
   try {
     let contentToProcess = [];
@@ -386,16 +392,6 @@ function createTradeEmbed(tradeData, type) {
     });
   }
 
-  // For sell notifications, ensure proper profit/loss display
-  if (type === 'SELL') {
-    const profitLoss = tradeData.sellPercentageGain || -tradeData.sellPercentageLoss;
-    embed.fields.push({
-      name: 'Profit/Loss %',
-      value: `${profitLoss > 0 ? '+' : ''}${profitLoss.toFixed(2)}%`,
-      inline: true
-    });
-  }
-
   return embed;
 }
 
@@ -408,6 +404,9 @@ export async function sendAnalysisMessage(type, data) {
       }
     };
 
+    // Determine which channel to use based on message type
+    let targetChannel;
+    
     switch(type) {
       case 'token':
         embed.title = '🔍 New Token Analysis';
@@ -424,6 +423,7 @@ export async function sendAnalysisMessage(type, data) {
             inline: true
           }
         ];
+        targetChannel = config.discord.hiveChannel; // Use trade channel for token analysis
         break;
 
       case 'analysis':
@@ -437,7 +437,6 @@ export async function sendAnalysisMessage(type, data) {
           }
         ];
 
-        // If analysis is longer than 1024 characters, add additional fields
         if (data.analysis && data.analysis.length > 1024) {
           const remainingAnalysis = data.analysis.substring(1024);
           const chunks = splitAdvice(remainingAnalysis, 1024);
@@ -450,7 +449,6 @@ export async function sendAnalysisMessage(type, data) {
           });
         }
 
-        // Add the decision field
         if (data.decision) {
           embed.fields.push({
             name: 'Investment Decision',
@@ -458,11 +456,12 @@ export async function sendAnalysisMessage(type, data) {
             inline: false
           });
         }
+        targetChannel = config.discord.hiveChannel; // Use hive channel for analysis
         break;
     }
 
-    // Find the configured channel
-    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
+    // Find the configured channel based on message type
+    const channel = botClient.channels.cache.get(targetChannel);
     if (channel && channel.isTextBased()) {
       await channel.send({ embeds: [embed] });
       return true;
@@ -647,6 +646,46 @@ export async function sendTwitterUpdate(type, content) {
     return false;
   } catch (error) {
     console.error('Error sending Twitter update:', error);
+    return false;
+  }
+}
+
+export async function sendTradeTargetUpdate(updateData) {
+  try {
+    const embed = {
+      title: '🎯 Trade Targets Updated',
+      color: 0x3498db, // Blue color
+      fields: [
+        {
+          name: 'Token',
+          value: updateData.tokenName,
+          inline: true
+        },
+        {
+          name: 'Previous Targets',
+          value: `Gain: ${updateData.oldValues.gain}%\nLoss: ${updateData.oldValues.loss}%`,
+          inline: true
+        },
+        {
+          name: 'New Targets',
+          value: `Gain: ${updateData.newValues.gain}%\nLoss: ${updateData.newValues.loss}%`,
+          inline: true
+        }
+      ],
+      timestamp: new Date().toISOString(),
+      footer: {
+        text: 'Aramid AI-X Trading Bot'
+      }
+    };
+
+    const channel = botClient.channels.cache.get(config.discord.tradeChannel);
+    if (channel && channel.isTextBased()) {
+      await channel.send({ embeds: [embed] });
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error sending trade target update:', error);
     return false;
   }
 }

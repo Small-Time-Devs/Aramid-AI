@@ -9,7 +9,7 @@ import { fetchTokenPairs, autoTradingAdvice } from '../utils/apiUtils.mjs';
 import { config } from '../config/config.mjs';
 import { config as dotEnvConfig } from 'dotenv';
 import { checkTokenBalance } from '../utils/solanaUtils.mjs';
-import { sendTradeNotification, sendErrorNotification, sendTradeStatusUpdate, sendAIAdviceUpdate } from '../utils/discord.mjs';
+import { sendTradeNotification, sendErrorNotification, sendTradeStatusUpdate, sendAIAdviceUpdate, sendTradeTargetUpdate } from '../utils/discord.mjs';
 import { getTradeAdvice } from '../agents/tradeAdvice.mjs';
 
 dotEnvConfig();
@@ -136,11 +136,14 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
                 case 'ADJUST':
                   if (parsedAdvice.adjustments) {
                     console.log('Adjusting trade targets:', parsedAdvice.adjustments);
-                    await updateTradeTargets(
+                    const updateResult = await updateTradeTargets(
                       trade.tradeId,
                       parsedAdvice.adjustments.targetGain,
                       parsedAdvice.adjustments.stopLoss
                     );
+                    if (updateResult.success) {
+                      await sendTradeTargetUpdate(updateResult);
+                    }
                   }
                   break;
                 case 'HOLD':
@@ -182,6 +185,10 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
     // Calculate actual profit/loss
     const priceChangePercent = calculatePriceChange(sellResult.exitPriceSOL, trade.entryPriceSOL);
     
+    // Determine the sell reason
+    const sellReason = reason || 
+      (priceChangePercent > 0 ? 'Target Gain Reached' : 'Loss Target Reached');
+
     // Prepare notification data
     const sellNotificationData = {
       ...trade,
@@ -189,12 +196,13 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
       exitPriceUSD: sellResult.exitPriceUSD,
       sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
       sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
-      reason: reason || sellResult.reason || `${priceChangePercent > 0 ? 'Profit' : 'Loss'} Target Reached`,
+      reason: sellReason,
       txId: sellResult.txId
     };
 
-    // Send sell notification
+    // Send sell notification once
     await sendTradeNotification(sellNotificationData, 'SELL');
+    
     activeTrades.delete(trade.tradeId);
     await sendTradeStatusUpdate(`Trade ${trade.tradeId} archived to past trades`, trade.tradeId);
   }

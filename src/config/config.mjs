@@ -49,8 +49,8 @@ export const config = {
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
-        walletThreshold: 0.04,
-        investmentAmountInSol: 0.02,
+        walletThreshold: 0.1,
+        investmentAmountInSol: 0.05,
         investHoldingTimePeriodHours: 1,
         quickProfitHoldingTimePeriodMinutes: 30,
     },
@@ -92,6 +92,7 @@ export const config = {
         ].filter(Boolean),
 
         allowBotMessagesChannels: [
+            process.env.DISCORD_ARAMID_GENERAL,
             process.env.DISCORD_GENERAL_CHAT,
             process.env.DISCORD_TRADE,
             process.env.DISCORD_PROFIT_SHOWCASE,

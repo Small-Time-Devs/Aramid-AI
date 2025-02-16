@@ -275,6 +275,12 @@ export async function updateTradeAmounts(tradeId, additionalAmount, additionalTo
 
 export async function updateTradeTargets(tradeId, targetGain, targetLoss) {
   try {
+    // First get the current trade data
+    const currentTrade = await getTrade(tradeId);
+    if (!currentTrade) {
+      throw new Error('Trade not found');
+    }
+
     const params = {
       TableName: 'AramidAI-X-Trades',
       Key: { tradeId },
@@ -289,15 +295,20 @@ export async function updateTradeTargets(tradeId, targetGain, targetLoss) {
     const command = new UpdateCommand(params);
     const response = await docClient.send(command);
     
-    console.log('Trade targets updated:', {
-      tradeId,
-      newTargets: {
+    // Return both old and new values for notification
+    return {
+      success: true,
+      oldValues: {
+        gain: currentTrade.targetPercentageGain,
+        loss: currentTrade.targetPercentageLoss
+      },
+      newValues: {
         gain: targetGain,
         loss: targetLoss
-      }
-    });
-    
-    return response.Attributes;
+      },
+      tokenName: currentTrade.tokenName,
+      tokenAddress: currentTrade.tokenAddress
+    };
   } catch (error) {
     console.error('Error updating trade targets:', error);
     throw error;

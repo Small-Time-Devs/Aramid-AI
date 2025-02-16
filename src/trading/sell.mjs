@@ -135,26 +135,11 @@ export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
       if (sellResponse.data.success) {
         const priceChangePercent = ((exitPriceSOL - trade.entryPriceSOL) / trade.entryPriceSOL) * 100;
 
-        // Only send notification if this is not a cleanup attempt
+        // Only perform notifications and cleanup if this is not a cleanup attempt
         if (!isCleanup) {
-          const sellNotificationData = {
-            tokenName: trade.tokenName,
-            tokenAddress: trade.tokenAddress,
-            tradeType: trade.tradeType,
-            exitPriceSOL,
-            exitPriceUSD,
-            sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
-            sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
-            reason: isCleanup ? 'Cleanup Execution' : 
-                   priceChangePercent >= trade.targetPercentageGain ? 'Target Gain Reached' :
-                   priceChangePercent <= -trade.targetPercentageLoss ? 'Loss Target Reached' : 
-                   'Manual Exit',
-            txId: sellResponse.data.txId
-          };
+          // Remove notification from here since it will be handled by the monitor
 
-          await sendTradeNotification(sellNotificationData, 'SELL');
-
-          // Perform cleanup and archive only for main sell
+          // Perform cleanup and archive
           await verifyAndCleanupSale(
             trade,
             trade.tokenAddress, 
@@ -168,7 +153,7 @@ export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
             sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
             sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
             status: 'COMPLETED',
-            reason: sellNotificationData.reason
+            reason: 'Manual Exit'  // Let the monitor function set the actual reason
           });
         }
 
