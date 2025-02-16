@@ -679,7 +679,7 @@ export async function sendTradeTargetUpdate(updateData) {
       }
     };
 
-    const channel = botClient.channels.cache.get(config.discord.tradeChannel);
+    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
     if (channel && channel.isTextBased()) {
       await channel.send({ embeds: [embed] });
       return true;
