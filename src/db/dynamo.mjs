@@ -362,7 +362,7 @@ export async function checkPastTrades(tokenAddress) {
     const response = await docClient.send(command);
     
     if (response.Items && response.Items.length > 0) {
-      // Check if the most recent trade with this token was within the last 24 hours
+      // Find most recent trade for this token
       const mostRecentTrade = response.Items.reduce((latest, trade) => {
         return (!latest || trade.timestamp > latest.timestamp) ? trade : latest;
       });
@@ -371,8 +371,8 @@ export async function checkPastTrades(tokenAddress) {
       const currentTime = new Date().getTime();
       const hoursSinceLastTrade = (currentTime - tradeTime) / (1000 * 60 * 60);
       
-      // Return true if we've traded this token in the last 24 hours
-      return hoursSinceLastTrade < 24;
+      // Return true if we've traded this token within the cooldown period
+      return hoursSinceLastTrade < config.cryptoGlobals.tradeCooldownHours;
     }
     
     return false;

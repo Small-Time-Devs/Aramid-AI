@@ -1,6 +1,6 @@
 import axios from 'axios';
 import { Connection } from "@solana/web3.js";
-import { getWalletDetails, storeTradeInfo, findActiveTradeByToken, updateTradeAmounts } from '../db/dynamo.mjs';
+import { getWalletDetails, storeTradeInfo, findActiveTradeByToken, updateTradeAmounts, checkPastTrades } from '../db/dynamo.mjs';
 import { decryptPrivateKey } from '../encryption/encryption.mjs';
 import { startPriceMonitoring } from './pnl.mjs';
 import { config } from '../config/config.mjs';
@@ -262,6 +262,13 @@ async function executeBuyOrder(data, targetGain, targetLoss, tradeType) {
     // Check for existing active trade first
     const existingTrade = await findActiveTradeByToken(data.tokenData.tokenAddress);
     
+    // Check if we've traded this token recently
+    const recentlyTraded = await checkPastTrades(data.tokenData.tokenAddress);
+    if (recentlyTraded) {
+      console.log(`Skipping buy - Token was traded within the last ${config.cryptoGlobals.tradeCooldownHours} hours`);
+      return { success: false, error: 'Token in cooldown period' };
+    }
+
     // Get wallet details first
     const walletDetails = await getWalletDetails();
     if (!walletDetails || !walletDetails.solPrivateKey || !walletDetails.solPublicKey) {

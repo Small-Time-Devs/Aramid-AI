@@ -137,7 +137,21 @@ export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
 
         // Only perform notifications and cleanup if this is not a cleanup attempt
         if (!isCleanup) {
-          // Remove notification from here since it will be handled by the monitor
+          // Prepare notification data with all required fields
+          const notificationData = {
+            tokenName: trade.tokenName,
+            tokenAddress: trade.tokenAddress,
+            tradeType: trade.tradeType,
+            exitPriceSOL: exitPriceSOL,
+            exitPriceUSD: exitPriceUSD,
+            sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
+            sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
+            reason: trade.reason || 'Manual Exit',
+            txId: sellResponse.data.txid
+          };
+
+          // Send notification before cleanup
+          await sendTradeNotification(notificationData, 'SELL');
 
           // Perform cleanup and archive
           await verifyAndCleanupSale(
@@ -153,7 +167,7 @@ export async function executeTradeSell(trade, currentPrice, isCleanup = false) {
             sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
             sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
             status: 'COMPLETED',
-            reason: 'Manual Exit'  // Let the monitor function set the actual reason
+            reason: 'Manual Exit'
           });
         }
 

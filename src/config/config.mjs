@@ -53,6 +53,7 @@ export const config = {
         investmentAmountInSol: 0.05,
         investHoldingTimePeriodHours: 1,
         quickProfitHoldingTimePeriodMinutes: 30,
+        tradeCooldownHours: 24, // How many hours to wait before trading same token again
     },
 
     // Add API sections and their respective APIs
@@ -70,6 +71,8 @@ export const config = {
     discord: {
         botToken: process.env.DISCORD_KEY,
         webhookUrl: process.env.DISCORD_WEB_HOOK || '',
+
+        cortexAI: '1340512058474631178',
 
         generalAramidChannel: process.env.DISCORD_ARAMID_GENERAL,
         hiveChannel: process.env.DISCORD_ARAMID_HIVE,

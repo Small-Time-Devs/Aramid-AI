@@ -72,6 +72,17 @@ botClient.on(Events.MessageCreate, async message => {
     return;
   }
 
+  // Add random response chance for cortexAI messages in generalAramidChannel
+  if (message.author.bot && 
+      message.author.id === config.discord.cortexAI &&
+      message.channelId === config.discord.generalAramidChannel) {
+    // 30% chance to respond
+    if (Math.random() > 0.3) {
+      console.log('Randomly chose not to respond to Cortex-AI message');
+      return;
+    }
+  }
+
   if (message.author.bot && !config.discord.allowBotMessagesChannels.includes(message.channelId)) {
     console.log('Message ignored - Bot message');
     return;

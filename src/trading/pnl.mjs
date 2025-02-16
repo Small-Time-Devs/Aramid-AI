@@ -19,7 +19,7 @@ const MONITOR_INTERVAL = 5000; // 5 seconds
 const MAX_REQUESTS_PER_MINUTE = 300;
 const requestTimes = [];
 const PRICE_CHECK_INTERVAL = 5000; // Check prices every 5 seconds
-const AI_ADVICE_INTERVAL = 60000; // Get AI advice every 60 seconds
+const AI_ADVICE_INTERVAL = 20000; // Get AI advice every 20 seconds
 const lastAICheckTimes = new Map(); // Track last AI check time per trade
 
 function canMakeRequest() {
