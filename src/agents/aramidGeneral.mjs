@@ -1,5 +1,7 @@
 import axios from 'axios';
 import { botClient } from '../utils/discord.mjs';
+import { config } from '../config/config.mjs';
+import { fetchTokenPairs, fetchTokenNameAndSymbol } from '../utils/apiUtils.mjs';
 
 function parseResponse(response) {
   // Handle cases where response is already a JSON string
@@ -14,6 +16,12 @@ function parseResponse(response) {
       console.error('Error parsing JSON response:', e);
     }
   }
+
+  // Handle nested response objects
+  if (typeof response === 'object' && response.response) {
+    return response.response;
+  }
+
   return response;
 }
 
@@ -38,17 +46,58 @@ export async function getAIResponse(userInput, userID) {
 
     console.log('API Response:', JSON.stringify(response.data, null, 2));
 
-    // Handle the agents array response format
-    if (response.data && response.data.agents && Array.isArray(response.data.agents)) {
+    if (response.data?.agents && Array.isArray(response.data.agents)) {
       const aramidAgent = response.data.agents.find(agent => agent.name === 'Aramid');
-      if (aramidAgent) {
-        // Handle mute decision if present
-        if (aramidAgent.decision && aramidAgent.decision.startsWith('MutePerson:')) {
-          const [_, targetID, duration] = aramidAgent.decision.split(':')[1].trim().split(',').map(s => s.trim());
-          await handleMuteAction(targetID, parseInt(duration));
+      if (aramidAgent && aramidAgent.response) {
+        const initialResponse = aramidAgent.response.response;
+
+        // Handle decisions if present
+        if (aramidAgent.response.decision) {
+          if (typeof aramidAgent.response.decision === 'string' && 
+              aramidAgent.response.decision.startsWith('MutePerson:')) {
+            const [_, targetID, duration] = aramidAgent.response.decision.split(':')[1].trim().split(',').map(s => s.trim());
+            await handleMuteAction(targetID, parseInt(duration));
+            return initialResponse; // Return the response after handling mute
+          } else if (typeof aramidAgent.response.decision === 'object') {
+            switch (aramidAgent.response.decision.type) {
+              case 'FetchTokenData':
+                console.log('Token data request:', aramidAgent.response.decision);
+                
+                const tokenData = await fetchTokenPairs(aramidAgent.response.decision.contractAddress);
+                const tokenMetadata = await fetchTokenNameAndSymbol(aramidAgent.response.decision.contractAddress);
+                
+                if (tokenData && tokenMetadata) {
+                  // Send initial response first
+                  await sendInitialResponse(initialResponse, userID);
+
+                  // Then fetch and send analysis
+                  const researchPayload = {
+                    userInput: `Research token: ${tokenMetadata.tokenName} (${aramidAgent.response.decision.contractAddress})`,
+                    tokenData: {
+                      ...tokenData,
+                      ...tokenMetadata
+                    },
+                    context: 'token-research',
+                  };
+
+                  const researchResponse = await axios.post(
+                    'https://api.smalltimedevs.com/ai/hive-engine/aramid-chat',
+                    researchPayload
+                  );
+
+                  if (researchResponse.data?.agents?.[0]?.response) {
+                    const analysisResponse = parseResponse(researchResponse.data.agents[0].response);
+                    await sendFollowUpResponse(analysisResponse, userID);
+                  }
+                  return null;
+                }
+                break;
+            }
+          }
         }
         
-        return parseResponse(aramidAgent.response);
+        // For regular responses without decisions, return the response
+        return initialResponse;
       }
     }
 
@@ -56,6 +105,28 @@ export async function getAIResponse(userInput, userID) {
   } catch (error) {
     console.error('Error getting AI response:', error.response?.data || error.message);
     throw new Error('Failed to get AI response');
+  }
+}
+
+async function sendInitialResponse(response, userID) {
+  const aramidChannel = botClient.channels.cache.get(config.discord.generalAramidChannel);
+  if (aramidChannel && aramidChannel.isTextBased()) {
+    const prefix = userID ? `<@${userID}>, ` : '';
+    await aramidChannel.send({
+      content: prefix + response,
+      allowedMentions: { users: userID ? [userID] : [] }
+    });
+  }
+}
+
+async function sendFollowUpResponse(response, userID) {
+  const aramidChannel = botClient.channels.cache.get(config.discord.generalAramidChannel);
+  if (aramidChannel && aramidChannel.isTextBased()) {
+    const prefix = userID ? `<@${userID}>, here's what I found:\n` : '';
+    await aramidChannel.send({
+      content: prefix + response,
+      allowedMentions: { users: userID ? [userID] : [] }
+    });
   }
 }
 

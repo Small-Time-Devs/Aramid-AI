@@ -186,13 +186,13 @@ botClient.once(Events.ClientReady, async c => {
 
       if (channel.isTextBased() && 
           channel.permissionsFor(c.user)?.has(PermissionsBitField.Flags.SendMessages)) {
-        // Get AI response for startup message
         try {
           const response = await getAIResponse("I've just been restarted.");
-          await channel.send('🟢 Bot is back online and ready to assist! ' + response);
+          if (response) {
+            await channel.send('🟢 **Bot Restarted!**\n\n' + response);
+          }
         } catch (error) {
           console.error('Error getting AI startup message:', error);
-          await channel.send('🟢 Bot is back online and ready to assist!');
         }
       } else {
         console.error('Bot does not have permission to send messages in this channel');
