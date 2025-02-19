@@ -660,10 +660,22 @@ export async function sendTwitterUpdate(type, content) {
 
 export async function sendTradeTargetUpdate(updateResult) {
   try {
-    // Get the hive channel for target updates as well
     const hiveChannel = botClient.channels.cache.get(config.discord.hiveChannel);
     if (!hiveChannel) {
       console.error('Hive channel not found');
+      return;
+    }
+
+    // Validate that we have both old and new values
+    if (!updateResult?.oldValues?.gain || !updateResult?.newValues?.gain) {
+      console.error('Missing target values in update result:', updateResult);
+      return;
+    }
+
+    // Only send notification if values actually changed
+    if (updateResult.oldValues.gain === updateResult.newValues.gain && 
+        updateResult.oldValues.loss === updateResult.newValues.loss) {
+      console.log('Trade targets unchanged, skipping notification');
       return;
     }
 
@@ -671,9 +683,21 @@ export async function sendTradeTargetUpdate(updateResult) {
       .setColor('#FFD700')  // Gold color for target updates
       .setTitle('🎯 Trade Targets Updated')
       .addFields(
-        { name: 'Token Name', value: updateResult.tokenName || 'N/A', inline: true },
-        { name: 'Previous Targets', value: `Gain: ${updateResult.oldValues.gain}%\nLoss: ${updateResult.oldValues.loss}%`, inline: true },
-        { name: 'New Targets', value: `Gain: ${updateResult.newValues.gain}%\nLoss: ${updateResult.newValues.loss}%`, inline: true }
+        { 
+          name: 'Token Name', 
+          value: updateResult.tokenName || 'N/A', 
+          inline: true 
+        },
+        { 
+          name: 'Previous Targets', 
+          value: `Gain: ${updateResult.oldValues.gain}%\nLoss: ${updateResult.oldValues.loss}%`, 
+          inline: true 
+        },
+        { 
+          name: 'New Targets', 
+          value: `Gain: ${updateResult.newValues.gain}%\nLoss: ${updateResult.newValues.loss}%`, 
+          inline: true 
+        }
       )
       .setTimestamp();
 

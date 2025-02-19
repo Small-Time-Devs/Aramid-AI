@@ -79,19 +79,19 @@ export async function fetchLatestTokenData() {
     let tokenProfiles = null;
     let validTokens = [];  // Changed from const to let
     
-    if (config.cryptoGlobals.useDexScreenerLatestTokens || config.twitter.settings.useDexScreenerLatestTokens) {
+    if (config.cryptoGlobals.useDexScreenerTopBoosted || config.cryptoGlobals.useDexScreenerLatestTokens) {
       tokenProfiles = await fetchLatestTokenProfiles();
       validTokens = tokenProfiles.filter(token => 
         token.tokenAddress && 
         token.chainId === "solana"
       );
-    } else if (config.cryptoGlobals.useDexScreenerTopBoosted || config.twitter.settings.useDexScreenerTopBoosted) {
+    } else if (config.cryptoGlobals.useDexScreenerTopBoosted || config.cryptoGlobals.useDexScreenerTopBoosted) {
       tokenProfiles = await fetchLatestBoostedTokens();
       validTokens = tokenProfiles.filter(token => 
         token.tokenAddress && 
         token.chainId === "solana"
       );
-    } else if (config.cryptoGlobals.useJupNewTokens || config.twitter.settings.useJupNewTokens) {
+    } else if (config.cryptoGlobals.useJupNewTokens) {
       tokenProfiles = await fetchNewJupTokens();
       const currentTime = Math.floor(Date.now() / 1000); // Current Unix timestamp
       const maxTime = currentTime - config.cryptoGlobals.maxPumpFunTime;

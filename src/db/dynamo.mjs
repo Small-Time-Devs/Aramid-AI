@@ -281,6 +281,13 @@ export async function updateTradeTargets(tradeId, targetGain, targetLoss) {
       throw new Error('Trade not found');
     }
 
+    // Capture old values before update
+    const oldValues = {
+      gain: currentTrade.targetPercentageGain,
+      loss: currentTrade.targetPercentageLoss
+    };
+
+    // Proceed with update
     const params = {
       TableName: 'AramidAI-X-Trades',
       Key: { tradeId },
@@ -294,13 +301,13 @@ export async function updateTradeTargets(tradeId, targetGain, targetLoss) {
 
     const command = new UpdateCommand(params);
     const response = await docClient.send(command);
-    
-    // Return both old and new values for notification
+
+    // Return old and new values with validation
     return {
       success: true,
       oldValues: {
-        gain: currentTrade.targetPercentageGain,
-        loss: currentTrade.targetPercentageLoss
+        gain: oldValues.gain,
+        loss: oldValues.loss
       },
       newValues: {
         gain: targetGain,

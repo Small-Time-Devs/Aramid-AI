@@ -12,6 +12,7 @@ export async function getTradeAdvice(trade, currentPrice) {
       trade.targetPercentageLoss
     );
 
+    console.log('Received trade advice:', advice);
     // Parse the advice response
     const parsedAdvice = parseAdviceResponse(advice);
     
@@ -137,7 +138,7 @@ function parseAdviceResponse(response) {
 
 async function sendFormattedAdvice(tradeId, parsedAdvice, tradeDetails) {
   // Log the incoming parsed advice for debugging
-  console.log('Formatting advice:', JSON.stringify(parsedAdvice, null, 2));
+  //console.log('Formatting advice:', JSON.stringify(parsedAdvice, null, 2));
 
   const formattedAdvice = {
     title: '🤖 Trading Analysis & Advice',

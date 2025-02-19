@@ -12,12 +12,12 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: true,
+            xAutoPoster: false,
             devMode: false,
             xAutoResponder: false,
             useDexScreenerLatestTokens: true,
             useDexScreenerTopBoosted: false,
-            useJupNewTokens: false, // Supports raydium and pump fun tokens.
+            
             postsPerDay: 100,
             postsPerMonth: 3000,
             timeToReadPostsOnPage: 2,            
@@ -27,8 +27,8 @@ export const config = {
     cryptoGlobals: {
         // settings to enable or disable trading
         tradeTokenDevMode: false,
-        tradeTokens: false, // This is for the twitter portion of the bot and the auto-trading portion
-        tradeTokensInBackground: false, // This is for the auto-trading portion only
+        tradeTokens: true, // This is for the twitter portion of the bot and the auto-trading portion
+        tradeTokensInBackground: true, // This is for the auto-trading portion only
 
         // Ask AI for advice on open trades
         askForAdviceFromAI: true,
@@ -38,9 +38,8 @@ export const config = {
         maxPumpFunTime: (30 * 60), // 30 minutes in seconds
 
         // Determine which method to get the token data from
-        useDexScreenerLatestTokens: true,
-        useDexScreenerTopBoosted: false,
-
+        useDexScreenerLatestTokens: false,
+        useDexScreenerTopBoosted: true,
         useJupNewTokens: false, // Supports raydium and pump fun tokens. ( Not great luck so far trading pumpfun tokens with jup still a WIP )
 
         tradeTokensInBackgroundInterval: 30000, // 60 seconds in miliseconds
