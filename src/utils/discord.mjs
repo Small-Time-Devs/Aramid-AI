@@ -1,4 +1,4 @@
-import { WebhookClient, Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
+import { WebhookClient, Client, GatewayIntentBits, Events, PermissionsBitField, EmbedBuilder } from 'discord.js';
 import { config } from '../config/config.mjs';
 import { getAIResponse } from '../agents/aramidGeneral.mjs';
 
@@ -563,78 +563,59 @@ function splitAdvice(advice, maxLength = 1000) {
   return parts;
 }
 
-export async function sendAIAdviceUpdate(tradeId, advice, tradeDetails) {
+export async function sendAIAdviceUpdate(advice, tradeDetails) {
   try {
-    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
-    if (!channel || !channel.isTextBased()) return false;
+    const hiveChannel = botClient.channels.cache.get(config.discord.hiveChannel);
+    if (!hiveChannel) {
+      console.error('Hive channel not found');
+      return;
+    }
 
-    const baseEmbed = {
-      title: '🧠 AI Trading Analysis',
-      color: 0x9933ff,
-      fields: [
-        {
-          name: 'Trade ID',
-          value: tradeId || 'Unknown',
-          inline: true
-        },
-        {
-          name: 'Contract Address',
-          value: tradeDetails.contractAddress || 'Unknown',
-          inline: true
-        },
-        {
-          name: 'Current Status',
-          value: advice.currentStatus,
-          inline: false
+    // Validate that we have the minimum required data
+    if (!tradeDetails?.tradeId || !tradeDetails?.currentPrice || !tradeDetails?.entryPrice) {
+      console.log('Skipping AI advice update - insufficient trade details');
+      return;
+    }
+
+    // Calculate price change percentage
+    const priceChange = ((parseFloat(tradeDetails.currentPrice) - parseFloat(tradeDetails.entryPrice)) / parseFloat(tradeDetails.entryPrice)) * 100;
+
+    const embed = new EmbedBuilder()
+      .setColor('#00FF00')
+      .setTitle('🤖 AI Trading Analysis')
+      .addFields(
+        { name: 'Trade ID', value: tradeDetails.tradeId, inline: false },
+        { name: 'Contract Address', value: tradeDetails.tokenAddress, inline: false },
+        { 
+          name: 'Current Status', 
+          value: `Current Price: ${tradeDetails.currentPrice} SOL\nEntry Price: ${tradeDetails.entryPrice} SOL\nPrice Change: ${priceChange.toFixed(2)}%\nTarget Gain: ${tradeDetails.targetGain}%\nStop Loss: ${tradeDetails.targetLoss}%`,
+          inline: false 
         }
-      ],
-      timestamp: new Date().toISOString(),
-      footer: {
-        text: 'Aramid AI-X Trading Bot'
-      }
-    };
+      );
 
-    // Split long analysis into chunks if needed
-    const analysisChunks = splitAdvice(advice.details || 'No analysis available', 1024);
-    
-    // Add first chunk to base embed
-    if (analysisChunks.length > 0) {
-      baseEmbed.fields.push({
-        name: 'Analysis',
-        value: analysisChunks[0],
-        inline: false
+    // Add analysis if available
+    if (advice.response) {
+      embed.addFields({ 
+        name: 'Analysis', 
+        value: advice.response, 
+        inline: false 
       });
     }
 
-    // Add recommendation
-    baseEmbed.fields.push({
-      name: 'Decision',
-      value: advice.recommendation,
-      inline: false
-    });
-
-    // Send base embed
-    await channel.send({ embeds: [baseEmbed] });
-
-    // Send remaining chunks if any
-    for (let i = 1; i < analysisChunks.length; i++) {
-      const followUpEmbed = {
-        color: 0x9933ff,
-        fields: [
-          {
-            name: `Analysis (continued ${i + 1})`,
-            value: analysisChunks[i],
-            inline: false
-          }
-        ]
-      };
-      await channel.send({ embeds: [followUpEmbed] });
+    // Format the recommendation section
+    let recommendation = '';
+    if (advice.action === 'ADJUST' && advice.adjustments) {
+      recommendation = `Decision: Adjust Targets\nNew Targets:\n• Target Gain: ${advice.adjustments.targetGain}%\n• Stop Loss: ${advice.adjustments.stopLoss}%\nReason: Market conditions require target adjustment`;
+    } else {
+      recommendation = `Decision: ${advice.decision || advice.action || 'HOLD'}`;
+      if (advice.reason) recommendation += `\n${advice.reason}`;
     }
 
-    return true;
+    embed.addFields({ name: 'Decision', value: recommendation, inline: false });
+    
+    await hiveChannel.send({ embeds: [embed] });
   } catch (error) {
     console.error('Error sending AI advice update:', error);
-    return false;
   }
 }
 
@@ -662,42 +643,27 @@ export async function sendTwitterUpdate(type, content) {
   }
 }
 
-export async function sendTradeTargetUpdate(updateData) {
+export async function sendTradeTargetUpdate(updateResult) {
   try {
-    const embed = {
-      title: '🎯 Trade Targets Updated',
-      color: 0x3498db, // Blue color
-      fields: [
-        {
-          name: 'Token',
-          value: updateData.tokenName,
-          inline: true
-        },
-        {
-          name: 'Previous Targets',
-          value: `Gain: ${updateData.oldValues.gain}%\nLoss: ${updateData.oldValues.loss}%`,
-          inline: true
-        },
-        {
-          name: 'New Targets',
-          value: `Gain: ${updateData.newValues.gain}%\nLoss: ${updateData.newValues.loss}%`,
-          inline: true
-        }
-      ],
-      timestamp: new Date().toISOString(),
-      footer: {
-        text: 'Aramid AI-X Trading Bot'
-      }
-    };
-
-    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
-    if (channel && channel.isTextBased()) {
-      await channel.send({ embeds: [embed] });
-      return true;
+    // Get the hive channel for target updates as well
+    const hiveChannel = botClient.channels.cache.get(config.discord.hiveChannel);
+    if (!hiveChannel) {
+      console.error('Hive channel not found');
+      return;
     }
-    return false;
+
+    const embed = new EmbedBuilder()
+      .setColor('#FFD700')  // Gold color for target updates
+      .setTitle('🎯 Trade Targets Updated')
+      .addFields(
+        { name: 'Token Name', value: updateResult.tokenName || 'N/A', inline: true },
+        { name: 'Previous Targets', value: `Gain: ${updateResult.oldValues.gain}%\nLoss: ${updateResult.oldValues.loss}%`, inline: true },
+        { name: 'New Targets', value: `Gain: ${updateResult.newValues.gain}%\nLoss: ${updateResult.newValues.loss}%`, inline: true }
+      )
+      .setTimestamp();
+
+    await hiveChannel.send({ embeds: [embed] });
   } catch (error) {
     console.error('Error sending trade target update:', error);
-    return false;
   }
 }

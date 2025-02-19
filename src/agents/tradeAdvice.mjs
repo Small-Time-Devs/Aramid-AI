@@ -53,64 +53,95 @@ export async function getTradeAdvice(trade, currentPrice) {
   }
 }
 
-function parseAdviceResponse(advice) {
-  try {
-    // Parse the JSON if it's a string
-    const parsedData = typeof advice === 'string' ? JSON.parse(advice) : advice;
-    
-    // Handle both array and single object formats
-    const agentAdvice = Array.isArray(parsedData) ? parsedData[0] : parsedData;
-    
-    if (!agentAdvice?.decision) {
-      console.log('Invalid advice format:', advice);
-      return defaultResponse();
+function parseAdviceResponse(response) {
+  // First check if response is a string starting with '[' (JSON array)
+  console.log('Parsing advice response:', response);
+  if (typeof response === 'string' && response.trim().startsWith('[')) {
+    try {
+      const parsedArray = JSON.parse(response);
+      if (Array.isArray(parsedArray) && parsedArray[0]) {
+        const advice = parsedArray[0];
+        
+        // Check for adjustments in the decision field
+        if (advice.decision && advice.decision.startsWith('Adjust Trade:')) {
+          const matches = advice.decision.match(/targetPercentageGain: (\d+), targetPercentageLoss: (\d+)/);
+          if (matches) {
+            return {
+              action: 'ADJUST',
+              hasAdjustments: true,
+              adjustments: {
+                targetGain: parseInt(matches[1]),
+                stopLoss: parseInt(matches[2])
+              },
+              reason: advice.response || '',
+              decision: advice.decision,
+              analysis: advice.response || '' // Include analysis from response field
+            };
+          }
+        }
+        
+        // Return the decision with analysis from response field
+        return {
+          action: advice.decision.startsWith('Hold') ? 'HOLD' : 'SELL',
+          hasAdjustments: false,
+          reason: advice.response || '',
+          decision: advice.decision,
+          analysis: advice.response || '' // Include analysis from response field
+        };
+      }
+    } catch (e) {
+      console.error('Error parsing JSON array response:', e);
     }
+  }
 
-    const { response, decision } = agentAdvice;
-
-    // Parse decision format: "Adjust Trade: targetPercentageGain: 15, targetPercentageLoss: 10"
-    const adjustMatch = decision.match(/Adjust Trade:\s*targetPercentageGain:\s*(\d+),\s*targetPercentageLoss:\s*(\d+)/i);
-    const sellMatch = decision.match(/Sell Now/i);
-
-    let action = 'HOLD';
-    let adjustments = null;
-
-    if (adjustMatch) {
-      action = 'ADJUST';
-      adjustments = {
-        targetGain: parseInt(adjustMatch[1]),
-        stopLoss: parseInt(adjustMatch[2])
+  // Handle existing plain text formats
+  if (typeof response === 'string') {
+    if (response.startsWith('Adjust Trade:')) {
+      const matches = response.match(/targetPercentageGain: (\d+), targetPercentageLoss: (\d+)/);
+      if (matches) {
+        return {
+          action: 'ADJUST',
+          hasAdjustments: true,
+          adjustments: {
+            targetGain: parseInt(matches[1]),
+            stopLoss: parseInt(matches[2])
+          }
+        };
+      }
+    }
+    
+    if (response === 'Hold') {
+      return {
+        action: 'HOLD',
+        hasAdjustments: false,
+        decision: 'Hold'
       };
-      console.log('Found trade adjustments:', adjustments);
-    } else if (sellMatch) {
-      action = 'SELL';
     }
+  }
 
-    console.log('Parsed advice:', {
-      action,
-      hasAdjustments: !!adjustments,
-      decision
-    });
-
+  // Try parsing as regular JSON object
+  try {
+    const parsed = JSON.parse(response);
+    return parsed;
+  } catch (e) {
+    console.log('Raw advice received:', response);
+    
+    // Default to hold if we can't parse the response
     return {
-      action,
-      reason: response,
-      adjustments,
-      formattedAdvice: response,
-      rawAdvice: JSON.stringify(agentAdvice, null, 2),
-      decision: decision
+      action: 'HOLD',
+      hasAdjustments: false,
+      decision: 'Hold' 
     };
-  } catch (error) {
-    console.error('Error parsing advice response:', error);
-    console.error('Raw advice received:', advice);
-    return defaultResponse();
   }
 }
 
 async function sendFormattedAdvice(tradeId, parsedAdvice, tradeDetails) {
+  // Log the incoming parsed advice for debugging
+  console.log('Formatting advice:', JSON.stringify(parsedAdvice, null, 2));
+
   const formattedAdvice = {
     title: '🤖 Trading Analysis & Advice',
-    details: parsedAdvice.reason,
+    details: parsedAdvice.analysis || parsedAdvice.reason || 'No detailed analysis available',
     currentStatus: `Current Price: ${tradeDetails.currentPrice} SOL\n` +
                   `Entry Price: ${tradeDetails.entryPrice} SOL\n` +
                   `Target Gain: ${tradeDetails.targetGain}%\n` +
@@ -122,6 +153,9 @@ async function sendFormattedAdvice(tradeId, parsedAdvice, tradeDetails) {
                      `• Stop Loss: ${parsedAdvice.adjustments.stopLoss}%` : 
                      `Action: ${parsedAdvice.action}`)
   };
+
+  // Log the formatted advice before sending
+  console.log('Sending formatted advice:', JSON.stringify(formattedAdvice, null, 2));
 
   await sendAIAdviceUpdate(tradeId, formattedAdvice, tradeDetails);
 }

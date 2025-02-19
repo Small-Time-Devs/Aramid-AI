@@ -46,62 +46,72 @@ export async function getAIResponse(userInput, userID) {
 
     console.log('API Response:', JSON.stringify(response.data, null, 2));
 
-    if (response.data?.agents && Array.isArray(response.data.agents)) {
-      const aramidAgent = response.data.agents.find(agent => agent.name === 'Aramid');
-      if (aramidAgent && aramidAgent.response) {
-        const initialResponse = aramidAgent.response.response;
+    // Check if response has agents array
+    if (!response.data?.agents || !Array.isArray(response.data.agents)) {
+      throw new Error('Invalid response format from API');
+    }
 
-        // Handle decisions if present
-        if (aramidAgent.response.decision) {
-          if (typeof aramidAgent.response.decision === 'string' && 
-              aramidAgent.response.decision.startsWith('MutePerson:')) {
-            const [_, targetID, duration] = aramidAgent.response.decision.split(':')[1].trim().split(',').map(s => s.trim());
-            await handleMuteAction(targetID, parseInt(duration));
-            return initialResponse; // Return the response after handling mute
-          } else if (typeof aramidAgent.response.decision === 'object') {
-            switch (aramidAgent.response.decision.type) {
-              case 'FetchTokenData':
-                console.log('Token data request:', aramidAgent.response.decision);
-                
-                const tokenData = await fetchTokenPairs(aramidAgent.response.decision.contractAddress);
-                const tokenMetadata = await fetchTokenNameAndSymbol(aramidAgent.response.decision.contractAddress);
-                
-                if (tokenData && tokenMetadata) {
-                  // Send initial response first
-                  await sendInitialResponse(initialResponse, userID);
+    // Find Aramid agent
+    const aramidAgent = response.data.agents.find(agent => agent.name === 'Aramid');
+    if (!aramidAgent?.response?.response) {
+      throw new Error('No valid Aramid response found');
+    }
 
-                  // Then fetch and send analysis
-                  const researchPayload = {
-                    userInput: `Research token: ${tokenMetadata.tokenName} (${aramidAgent.response.decision.contractAddress})`,
-                    tokenData: {
-                      ...tokenData,
-                      ...tokenMetadata
-                    },
-                    context: 'token-research',
-                  };
+    // For trade notifications, just return the response without further processing
+    if (userInput.includes('[Title: SELL Trade Executed]') || 
+        userInput.includes('[Title: BUY Trade Executed]') ||
+        userInput.includes('[Title: 🤖 AI Trading Analysis]')) {
+      return aramidAgent.response.response;
+    }
 
-                  const researchResponse = await axios.post(
-                    'https://api.smalltimedevs.com/ai/hive-engine/aramid-chat',
-                    researchPayload
-                  );
+    // Only process decisions for aramid-chat messages
+    if (aramidAgent.response.decision) {
+      if (typeof aramidAgent.response.decision === 'string' && 
+          aramidAgent.response.decision.startsWith('MutePerson:')) {
+        const [_, targetID, duration] = aramidAgent.response.decision.split(':')[1].trim().split(',').map(s => s.trim());
+        await handleMuteAction(targetID, parseInt(duration));
+        return aramidAgent.response.response;
+      }
+      
+      if (aramidAgent.response.decision.type === 'FetchTokenData' && 
+          aramidAgent.response.decision.contractAddress) {
+        // Only process token data requests for non-trade messages
+        try {
+          const tokenData = await fetchTokenPairs(aramidAgent.response.decision.contractAddress);
+          const tokenMetadata = await fetchTokenNameAndSymbol(aramidAgent.response.decision.contractAddress);
+          
+          if (tokenData && tokenMetadata) {
+            await sendInitialResponse(aramidAgent.response.response, userID);
+            
+            const researchPayload = {
+              userInput: `Research token: ${tokenMetadata.tokenName} (${aramidAgent.response.decision.contractAddress})`,
+              tokenData: {
+                ...tokenData,
+                ...tokenMetadata
+              },
+              context: 'token-research',
+            };
 
-                  if (researchResponse.data?.agents?.[0]?.response) {
-                    const analysisResponse = parseResponse(researchResponse.data.agents[0].response);
-                    await sendFollowUpResponse(analysisResponse, userID);
-                  }
-                  return null;
-                }
-                break;
+            const researchResponse = await axios.post(
+              'https://api.smalltimedevs.com/ai/hive-engine/aramid-chat',
+              researchPayload
+            );
+
+            if (researchResponse.data?.agents?.[0]?.response) {
+              const analysisResponse = researchResponse.data.agents[0].response.response;
+              await sendFollowUpResponse(analysisResponse, userID);
             }
+            return null;
           }
+        } catch (error) {
+          console.log('Token data fetch failed, returning normal response');
+          return aramidAgent.response.response;
         }
-        
-        // For regular responses without decisions, return the response
-        return initialResponse;
       }
     }
 
-    throw new Error('Invalid response format from API');
+    return aramidAgent.response.response;
+
   } catch (error) {
     console.error('Error getting AI response:', error.response?.data || error.message);
     throw new Error('Failed to get AI response');

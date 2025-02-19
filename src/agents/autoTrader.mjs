@@ -139,9 +139,9 @@ export async function executeTrade(investmentChoice) {
             targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
             tradeType = 'QUICK_PROFIT';
           } else {
-            // Regular Invest format
-            const targetGainMatch = investmentChoice.agentInvestmentDecisionComment.match(/take profit at (\d+)%/i);
-            const targetLossMatch = investmentChoice.agentInvestmentDecisionComment.match(/stop loss at (\d+)%/i);
+            // Regular Invest format - Updated regex to handle both formats
+            const targetGainMatch = investmentChoice.agentInvestmentDecisionComment.match(/(?:take profit at|Gain \+)(\d+)%/i);
+            const targetLossMatch = investmentChoice.agentInvestmentDecisionComment.match(/(?:stop loss at|Loss -)(\d+)%/i);
             
             targetGain = targetGainMatch ? parseFloat(targetGainMatch[1]) : 50;
             targetLoss = targetLossMatch ? parseFloat(targetLossMatch[1]) : 20;

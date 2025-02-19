@@ -126,37 +126,37 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
             const parsedAdvice = await getTradeAdvice(trade, currentPrice);
             lastAICheckTimes.set(tradeId, currentTime);
 
-            // Only act on valid advice responses
-            if (parsedAdvice && parsedAdvice.action) {
-              switch (parsedAdvice.action) {
-                case 'SELL':
-                  console.log('AI advised to sell:', parsedAdvice.reason);
-                  await executeSellOrder(trade, currentPrice, 'AI Advised Sale');
-                  return;
-                case 'ADJUST':
-                  if (parsedAdvice.adjustments) {
-                    console.log('Adjusting trade targets:', parsedAdvice.adjustments);
-                    const updateResult = await updateTradeTargets(
-                      trade.tradeId,
-                      parsedAdvice.adjustments.targetGain,
-                      parsedAdvice.adjustments.stopLoss
-                    );
-                    if (updateResult.success) {
-                      await sendTradeTargetUpdate(updateResult);
-                    }
-                  }
-                  break;
-                case 'HOLD':
-                  console.log('AI advised to hold position');
-                  break;
-                default:
-                  console.log('Unknown AI advice action:', parsedAdvice.action);
-                  break;
+            // Only send advice if we have valid data
+            if (parsedAdvice && trade) {
+              // Create validated trade details object
+              const validTradeDetails = {
+                tradeId: trade.tradeId,
+                tokenAddress: trade.tokenAddress,
+                currentPrice: currentPrice,
+                entryPrice: trade.entryPriceSOL,
+                targetGain: trade.targetPercentageGain,
+                targetLoss: trade.targetPercentageLoss
+              };
+
+              // Send AI advice update first
+              await sendAIAdviceUpdate(parsedAdvice, validTradeDetails);
+
+              // Only handle adjustments if that's the specific action
+              if (parsedAdvice.action === 'ADJUST' && parsedAdvice.adjustments) {
+                console.log('Adjusting trade targets:', parsedAdvice.adjustments);
+                const updateResult = await updateTradeTargets(
+                  trade.tradeId,
+                  parsedAdvice.adjustments.targetGain,
+                  parsedAdvice.adjustments.stopLoss
+                );
+                if (updateResult.success) {
+                  // Only send target update notification
+                  await sendTradeTargetUpdate(updateResult);
+                }
               }
             }
           } catch (error) {
             console.error('Error processing AI advice:', error);
-            // Continue monitoring even if AI advice fails
           }
         }
       }

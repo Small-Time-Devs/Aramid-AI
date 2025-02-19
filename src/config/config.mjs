@@ -27,8 +27,8 @@ export const config = {
     cryptoGlobals: {
         // settings to enable or disable trading
         tradeTokenDevMode: false,
-        tradeTokens: false, // This is for the twitter portion of the bot and the auto-trading portion
-        tradeTokensInBackground: false, // This is for the auto-trading portion only
+        tradeTokens: true, // This is for the twitter portion of the bot and the auto-trading portion
+        tradeTokensInBackground: true, // This is for the auto-trading portion only
 
         // Ask AI for advice on open trades
         askForAdviceFromAI: true,
@@ -50,7 +50,7 @@ export const config = {
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
         walletThreshold: 0.1,
-        investmentAmountInSol: 0.05,
+        investmentAmountInSol: 0.01,
         investHoldingTimePeriodHours: 1,
         quickProfitHoldingTimePeriodMinutes: 30,
         tradeCooldownHours: 24, // How many hours to wait before trading same token again
