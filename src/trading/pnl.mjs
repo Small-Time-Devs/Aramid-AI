@@ -44,7 +44,7 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
     try {
       if (!canMakeRequest()) {
         console.log('Rate limit approaching, waiting...');
-        setTimeout(() => monitor(), MONITOR_INTERVAL); // Retry after 1 second if rate limited
+        setTimeout(() => monitor(), MONITOR_INTERVAL);
         return;
       }
 
@@ -55,26 +55,7 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
         return;
       }
 
-      // Check balance and handle zero balance scenario
-      const tokenBalance = await checkTokenBalance(trade.tokenAddress, config.cryptoGlobals.publicKey);
-      if (tokenBalance < 1) {
-        console.log(`Trade ${tradeId} has no balance, archiving trade...`);
-        const sellInfo = {
-          exitPriceSOL: 0,
-          exitPriceUSD: 0,
-          sellPercentageGain: 0,
-          sellPercentageLoss: 0,
-          status: 'COMPLETED',
-          reason: 'Token Balance is Dust archiving trade'
-        };
-        
-        await moveTradeToPastTrades(trade, sellInfo);
-        activeTrades.delete(tradeId);
-        await sendTradeStatusUpdate(`Trade ${trade.tradeId} has no balance, archiving trade...`, trade.tradeId);
-        return;
-      }
-
-      trackRequest();
+      // First get current price and trade data
       const tokenData = await fetchTokenPairs(trade.tokenAddress);
       if (!tokenData) {
         setTimeout(() => monitor(), PRICE_CHECK_INTERVAL);
@@ -84,40 +65,9 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
       const currentPrice = tokenData.priceNative;
       const priceChangePercent = calculatePriceChange(currentPrice, trade.entryPriceSOL);
 
-      // Always log current status
-      if (config.cryptoGlobals.tradeTokenDevMode) {
-        console.log(`[${new Date().toISOString()}] Trade ${tradeId} status:`, {
-          currentPrice,
-          priceChange: priceChangePercent,
-          targetGain: trade.targetPercentageGain,
-          targetLoss: trade.targetPercentageLoss
-        });
-      }
-
-      // First check profit/loss targets
-      if (priceChangePercent >= trade.targetPercentageGain) {
-        console.log(`Taking profit at ${priceChangePercent}% gain`);
-        await executeSellOrder(trade, currentPrice);
-        return;
-      }
-
-      if (priceChangePercent <= -trade.targetPercentageLoss) {
-        console.log(`Stopping loss at ${priceChangePercent}% loss`);
-        await executeSellOrder(trade, currentPrice);
-        return;
-      }
-
-      // Check time limits
-      const currentTime = new Date().getTime();
-      const tradeTime = new Date(trade.timestamp).getTime();
-      
-      if (shouldSellBasedOnTime(trade, currentTime, tradeTime)) {
-        await executeSellOrder(trade, currentPrice);
-        return;
-      }
-
-      // Get AI advice on current position
+      // Process AI advice if enabled
       if (config.cryptoGlobals.askForAdviceFromAI) {
+        const currentTime = Date.now();
         const lastCheckTime = lastAICheckTimes.get(tradeId) || 0;
         const timeSinceLastCheck = currentTime - lastCheckTime;
 
@@ -126,32 +76,39 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
             const parsedAdvice = await getTradeAdvice(trade, currentPrice);
             lastAICheckTimes.set(tradeId, currentTime);
 
-            // Only send advice if we have valid data
-            if (parsedAdvice && trade) {
-              // Create validated trade details object
-              const validTradeDetails = {
+            if (parsedAdvice) {
+              // Create validated trade status object
+              const tradeStatus = {
                 tradeId: trade.tradeId,
                 tokenAddress: trade.tokenAddress,
-                currentPrice: currentPrice,
-                entryPrice: trade.entryPriceSOL,
-                targetGain: trade.targetPercentageGain,
-                targetLoss: trade.targetPercentageLoss
+                tokenName: trade.tokenName,
+                currentPrice: currentPrice?.toString() || '0',
+                entryPrice: trade.entryPriceSOL?.toString() || '0',
+                targetGain: trade.targetPercentageGain || 0,
+                targetLoss: trade.targetPercentageLoss || 0,
+                status: trade.status || 'ACTIVE'
               };
 
-              // Send AI advice update first
-              await sendAIAdviceUpdate(parsedAdvice, validTradeDetails);
+              // Only send update if we have valid data
+              if (tradeStatus.tradeId && tradeStatus.currentPrice && tradeStatus.entryPrice) {
+                await sendAIAdviceUpdate(parsedAdvice, tradeStatus);
+              }
 
-              // Only handle adjustments if that's the specific action
+              // Handle trade adjustments if needed
               if (parsedAdvice.action === 'ADJUST' && parsedAdvice.adjustments) {
-                console.log('Adjusting trade targets:', parsedAdvice.adjustments);
-                const updateResult = await updateTradeTargets(
-                  trade.tradeId,
-                  parsedAdvice.adjustments.targetGain,
-                  parsedAdvice.adjustments.stopLoss
-                );
-                if (updateResult.success) {
-                  // Only send target update notification
-                  await sendTradeTargetUpdate(updateResult);
+                const targetGain = parseFloat(parsedAdvice.adjustments.targetGain);
+                const targetLoss = parseFloat(parsedAdvice.adjustments.stopLoss);
+
+                if (!isNaN(targetGain) && !isNaN(targetLoss)) {
+                  const updateResult = await updateTradeTargets(
+                    trade.tradeId,
+                    targetGain,
+                    targetLoss
+                  );
+
+                  if (updateResult.success) {
+                    await sendTradeTargetUpdate(updateResult);
+                  }
                 }
               }
             }
@@ -161,50 +118,90 @@ export async function startPriceMonitoring(tradeId, initialDelay = 30000) {
         }
       }
 
-      // Continue monitoring regardless of result
+      // Check profit/loss targets and execute sell if needed 
+      const sellDecision = shouldExecuteSell(trade, currentPrice, priceChangePercent);
+      if (sellDecision.shouldSell) {
+        await executeSellOrder(trade, currentPrice, sellDecision.reason);
+        return;
+      }
+
       setTimeout(() => monitor(), PRICE_CHECK_INTERVAL);
+
     } catch (error) {
-      console.error(`Error monitoring trade ${tradeId}:`, error.message);
-      setTimeout(() => monitor(), PRICE_CHECK_INTERVAL); // Keep monitoring even after errors
+      console.error(`Error monitoring trade ${tradeId}:`, error);
+      setTimeout(() => monitor(), PRICE_CHECK_INTERVAL);
     }
   }
 
   async function executeSellOrder(trade, currentPrice, reason = null) {
-    const sellResult = await executeTradeSell(trade, currentPrice);
-    if (!sellResult.success) {
-      await sendErrorNotification('Failed to execute sell order', {
-        tradeId: trade.tradeId,
-        tokenAddress: trade.tokenAddress,
-        currentPrice
-      });
-      console.log(`Failed to sell trade ${trade.tradeId}, will retry...`);
+    try {
+      // Verify token balance before attempting sell
+      const tokenBalance = await checkTokenBalance(trade.tokenAddress);
+      if (!tokenBalance || tokenBalance < trade.tokensReceived * 0.9) { // Allow 10% slippage
+        console.log(`No tokens available for trade ${trade.tradeId}, removing from active trades`);
+        
+        // Move to past trades with appropriate status
+        await moveTradeToPastTrades(trade, {
+          exitPriceSOL: currentPrice,
+          status: 'COMPLETED',
+          reason: 'Tokens no longer available'
+        });
+        
+        activeTrades.delete(trade.tradeId);
+        return;
+      }
+
+      const sellResult = await executeTradeSell(trade, currentPrice);
+      if (!sellResult.success) {
+        if (sellResult.error === 'No tokens available to sell') {
+          // Handle case where tokens are no longer available
+          await moveTradeToPastTrades(trade, {
+            exitPriceSOL: currentPrice,
+            status: 'COMPLETED',
+            reason: 'Tokens no longer available'
+          });
+          activeTrades.delete(trade.tradeId);
+          return;
+        }
+
+        await sendErrorNotification('Failed to execute sell order', {
+          tradeId: trade.tradeId,
+          tokenAddress: trade.tokenAddress,
+          currentPrice,
+          error: sellResult.error
+        });
+        console.log(`Failed to sell trade ${trade.tradeId}, will retry...`);
+        setTimeout(() => monitor(), 5000);
+        return;
+      }
+
+      // Calculate actual profit/loss
+      const priceChangePercent = calculatePriceChange(sellResult.exitPriceSOL, trade.entryPriceSOL);
+      
+      // Determine the sell reason
+      const sellReason = reason || 
+        (priceChangePercent > 0 ? 'Target Gain Reached' : 'Loss Target Reached');
+
+      // Prepare notification data
+      const sellNotificationData = {
+        ...trade,
+        exitPriceSOL: sellResult.exitPriceSOL,
+        exitPriceUSD: sellResult.exitPriceUSD,
+        sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
+        sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
+        reason: sellReason,
+        txId: sellResult.txId
+      };
+
+      // Send sell notification once
+      await sendTradeNotification(sellNotificationData, 'SELL');
+      
+      activeTrades.delete(trade.tradeId);
+      await sendTradeStatusUpdate(`Trade ${trade.tradeId} archived to past trades`, trade.tradeId);
+    } catch (error) {
+      console.error(`Error executing sell order for trade ${trade.tradeId}:`, error);
       setTimeout(() => monitor(), 5000);
-      return;
     }
-
-    // Calculate actual profit/loss
-    const priceChangePercent = calculatePriceChange(sellResult.exitPriceSOL, trade.entryPriceSOL);
-    
-    // Determine the sell reason
-    const sellReason = reason || 
-      (priceChangePercent > 0 ? 'Target Gain Reached' : 'Loss Target Reached');
-
-    // Prepare notification data
-    const sellNotificationData = {
-      ...trade,
-      exitPriceSOL: sellResult.exitPriceSOL,
-      exitPriceUSD: sellResult.exitPriceUSD,
-      sellPercentageGain: priceChangePercent > 0 ? priceChangePercent : null,
-      sellPercentageLoss: priceChangePercent <= 0 ? Math.abs(priceChangePercent) : null,
-      reason: sellReason,
-      txId: sellResult.txId
-    };
-
-    // Send sell notification once
-    await sendTradeNotification(sellNotificationData, 'SELL');
-    
-    activeTrades.delete(trade.tradeId);
-    await sendTradeStatusUpdate(`Trade ${trade.tradeId} archived to past trades`, trade.tradeId);
   }
 
   activeTrades.set(tradeId, true);
@@ -246,4 +243,40 @@ export async function initializeTradeMonitoring() {
 
 function calculatePriceChange(currentPrice, entryPrice) {
   return ((currentPrice - entryPrice) / entryPrice) * 100;
+}
+
+function shouldExecuteSell(trade, currentPrice, priceChange) {
+  // Take profit target reached
+  if (priceChange >= trade.targetPercentageGain) {
+    console.log(`Taking profit at ${priceChange.toFixed(2)}% gain`);
+    return {
+      shouldSell: true,
+      reason: 'Target Gain Reached'
+    };
+  }
+
+  // Hit stop loss
+  if (priceChange <= -trade.targetPercentageLoss) {
+    console.log(`Stopping loss at ${priceChange.toFixed(2)}% loss`);
+    return {
+      shouldSell: true,
+      reason: 'Loss Target Reached'
+    };
+  }
+
+  // Check time-based exit
+  const currentTime = Date.now();
+  const tradeTime = new Date(trade.timestamp).getTime();
+  
+  if (shouldSellBasedOnTime(trade, currentTime, tradeTime)) {
+    console.log('Time limit reached, executing sell');
+    return {
+      shouldSell: true,
+      reason: 'Time Limit Reached'
+    };
+  }
+
+  return {
+    shouldSell: false
+  };
 }

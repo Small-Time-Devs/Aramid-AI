@@ -45,11 +45,18 @@ function createKeypairFromPrivateKey(privateKeyString) {
   }
 }
 
-export async function checkTokenBalance(tokenMint, ownerPublicKey) {
+export async function checkTokenBalance(tokenMint) {
   try {
     const connection = new Connection(config.cryptoGlobals.rpcNode);
+    
+    // Get wallet details
+    const walletDetails = await getWalletDetails();
+    if (!walletDetails?.solPublicKey) {
+      throw new Error('Wallet public key not found');
+    }
+
     const mint = new PublicKey(tokenMint);
-    const owner = new PublicKey(ownerPublicKey);
+    const owner = new PublicKey(walletDetails.solPublicKey);
 
     // Find token account
     const tokenAccounts = await connection.getTokenAccountsByOwner(owner, {

@@ -565,55 +565,70 @@ function splitAdvice(advice, maxLength = 1000) {
 
 export async function sendAIAdviceUpdate(advice, tradeDetails) {
   try {
-    const hiveChannel = botClient.channels.cache.get(config.discord.hiveChannel);
-    if (!hiveChannel) {
-      console.error('Hive channel not found');
-      return;
-    }
+    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
+    if (!channel || !channel.isTextBased()) return;
 
-    // Validate that we have the minimum required data
+    // Validate required fields
     if (!tradeDetails?.tradeId || !tradeDetails?.currentPrice || !tradeDetails?.entryPrice) {
-      console.log('Skipping AI advice update - insufficient trade details');
+      console.log('Missing required trade details');
       return;
     }
 
-    // Calculate price change percentage
-    const priceChange = ((parseFloat(tradeDetails.currentPrice) - parseFloat(tradeDetails.entryPrice)) / parseFloat(tradeDetails.entryPrice)) * 100;
+    // Calculate current percentage change
+    const currentChange = ((parseFloat(tradeDetails.currentPrice) - parseFloat(tradeDetails.entryPrice)) 
+                          / parseFloat(tradeDetails.entryPrice)) * 100;
+
+    const fields = [
+      {
+        name: 'Trade ID',
+        value: tradeDetails.tradeId || 'Unknown',
+        inline: true
+      },
+      {
+        name: 'Token',
+        value: tradeDetails.tokenName || 'Unknown Token',
+        inline: true
+      }
+    ];
+
+    // Only add status field if we have required data
+    const statusValue = [
+      `Current Price: ${tradeDetails.currentPrice} SOL`,
+      `Entry Price: ${tradeDetails.entryPrice} SOL`,
+      `Current P/L: ${currentChange >= 0 ? '+' : ''}${currentChange.toFixed(2)}%`,
+      `Target Gain: ${tradeDetails.targetGain}%`,
+      `Stop Loss: ${tradeDetails.targetLoss}%`
+    ].join('\n');
+
+    fields.push({
+      name: 'Status',
+      value: statusValue,
+      inline: false
+    });
+
+    // Add recommendation field if we have advice
+    if (advice?.action) {
+      const recValue = advice.action === 'ADJUST' ?
+        `New Targets:\n• Target Gain: ${advice.adjustments?.targetGain}%\n• Stop Loss: ${advice.adjustments?.stopLoss}%` :
+        `Action: ${advice.action}`;
+
+      fields.push({
+        name: 'Recommendation',
+        value: recValue,
+        inline: false
+      });
+    }
 
     const embed = new EmbedBuilder()
       .setColor('#00FF00')
       .setTitle('🤖 AI Trading Analysis')
-      .addFields(
-        { name: 'Trade ID', value: tradeDetails.tradeId, inline: false },
-        { name: 'Contract Address', value: tradeDetails.tokenAddress, inline: false },
-        { 
-          name: 'Current Status', 
-          value: `Current Price: ${tradeDetails.currentPrice} SOL\nEntry Price: ${tradeDetails.entryPrice} SOL\nPrice Change: ${priceChange.toFixed(2)}%\nTarget Gain: ${tradeDetails.targetGain}%\nStop Loss: ${tradeDetails.targetLoss}%`,
-          inline: false 
-        }
-      );
+      .setDescription('Latest trade analysis and recommendations');
 
-    // Add analysis if available
-    if (advice.response) {
-      embed.addFields({ 
-        name: 'Analysis', 
-        value: advice.response, 
-        inline: false 
-      });
-    }
+    // Add validated fields
+    embed.addFields(fields);
+    embed.setTimestamp();
 
-    // Format the recommendation section
-    let recommendation = '';
-    if (advice.action === 'ADJUST' && advice.adjustments) {
-      recommendation = `Decision: Adjust Targets\nNew Targets:\n• Target Gain: ${advice.adjustments.targetGain}%\n• Stop Loss: ${advice.adjustments.stopLoss}%\nReason: Market conditions require target adjustment`;
-    } else {
-      recommendation = `Decision: ${advice.decision || advice.action || 'HOLD'}`;
-      if (advice.reason) recommendation += `\n${advice.reason}`;
-    }
-
-    embed.addFields({ name: 'Decision', value: recommendation, inline: false });
-    
-    await hiveChannel.send({ embeds: [embed] });
+    await channel.send({ embeds: [embed] });
   } catch (error) {
     console.error('Error sending AI advice update:', error);
   }
