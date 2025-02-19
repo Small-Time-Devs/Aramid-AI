@@ -13,6 +13,7 @@ import {
   TOKEN_PROGRAM_ID 
 } from '@solana/spl-token';
 import { config } from '../config/config.mjs';
+import { getWalletDetails } from '../db/dynamo.mjs'; // Add this import
 
 function createKeypairFromPrivateKey(privateKeyString) {
   try {
