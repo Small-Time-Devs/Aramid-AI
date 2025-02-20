@@ -12,47 +12,47 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: false,
-            devMode: false,
-            xAutoResponder: false,
-            useDexScreenerLatestTokens: true,
-            useDexScreenerTopBoosted: false,
+            xAutoPoster: process.env.TWITTER_POSTER || false,
+            devMode: process.env.TWITTER_DEV_MODE || false,
+            xAutoResponder: process.env.TWITTER_RESPONDER || false,
+            useDexScreenerLatestTokens: process.env.TWITTER_GATHER_DEXSCREENER_LATEST_TOKENS || false,
+            useDexScreenerTopBoosted: process.env.TWITTER_GATHER_DEXSCREENER_LATEST_BOOSTED_TOKENS || false,
             
-            postsPerDay: 100,
-            postsPerMonth: 3000,
+            postsPerDay: process.env.TWITTER_POSTS_PER_DAY || 10,
+            postsPerMonth: process.env.TWITTER_POSTS_PER_MONTH || 300,
             timeToReadPostsOnPage: 2,            
         },
     },
 
     cryptoGlobals: {
         // settings to enable or disable trading
-        tradeTokenDevMode: false,
-        tradeTokens: true, // This is for the twitter portion of the bot and the auto-trading portion
-        tradeTokensInBackground: true, // This is for the auto-trading portion only
+        tradeTokenDevMode: process.env.CRYPTO_TRADE_DEV_MODE || false,
+        tradeTokens: process.env.CRYPTO_TRADE_TOKENS, // This is for the twitter portion of the bot and the auto-trading portion
+        tradeTokensInBackground: process.env.CRYPTO_TRADE_TOKENS_IN_BACKGROUND, // This is for the auto-trading portion only
 
         // Ask AI for advice on open trades
-        askForAdviceFromAI: true,
+        askForAdviceFromAI: process.env.CRYPTO_TRADE_TOKENS_ASK_AI_TRADE_ADVICE || false,
 
         // Trading Times
         minPumpFunTime: (10 * 60), // 10 minutes in seconds
         maxPumpFunTime: (30 * 60), // 30 minutes in seconds
 
         // Determine which method to get the token data from
-        useDexScreenerLatestTokens: false,
-        useDexScreenerTopBoosted: true,
-        useJupNewTokens: false, // Supports raydium and pump fun tokens. ( Not great luck so far trading pumpfun tokens with jup still a WIP )
+        useDexScreenerLatestTokens: process.env.CRYPTO_TRADE_TOKENS_GATHER_DEXSCREENER_LATEST_TOKENS || false,
+        useDexScreenerTopBoosted: process.env.CRYPTO_TRADE_TOKENS_GATHER_DEXSCREENER_LATEST_BOOSTED_TOKENS || false,
+        useJupNewTokens: process.env.CRYPTO_TRADE_TOKENS_GATHER_JUP_NEW_TOKENS, // Supports raydium and pump fun tokens. ( Not great luck so far trading pumpfun tokens with jup still a WIP )
 
-        tradeTokensInBackgroundInterval: 30000, // 60 seconds in miliseconds
-        maxOpenTrades: 1,
+        tradeTokensInBackgroundInterval: process.env.CRYPTO_TRADE_TOKENS_INTERVAL_MS || 30000, // 30 seconds
+        maxOpenTrades: process.env.CRYPTO_TRADE_TOKENS_MAX_OPEN_TRADES || 1,
         solMint: 'So11111111111111111111111111111111111111112',
         solanaMint: 'solMint: "So11111111111111111111111111111111111111112",',
         publicKey: process.env.SOL_PUBLIC_KEY,
         rpcNode: process.env.HELIUS_RPC_NODE,
-        walletThreshold: 0.1,
-        investmentAmountInSol: 0.01,
-        investHoldingTimePeriodHours: 1,
-        quickProfitHoldingTimePeriodMinutes: 30,
-        tradeCooldownHours: 24, // How many hours to wait before trading same token again
+        walletThreshold: process.env.CRYPTO_TRADE_TOKENS_MIN_WALLET_BALANCE || 0.1,
+        investmentAmountInSol: process.env.CRYPTO_TRADE_TOKENS_INVESTMENT_AMOUNT_SOL || 0.1,
+        investHoldingTimePeriodHours: process.env.CRYPTO_TRADE_TOKENS_INVEST_MIN_HOLD_TIME_HOURS || 1,
+        quickProfitHoldingTimePeriodMinutes: process.env.CRYPTO_TRADE_TOKENS_QUICK_PROFIT_HOLD_TIME_MINUTES || 30,
+        tradeCooldownHours: process.env.CRYPTO_TRADE_TOKENS_REINVEST_COOLDOWN_HOURS || 24, // How many hours to wait before trading same token again
     },
 
     // Add API sections and their respective APIs
