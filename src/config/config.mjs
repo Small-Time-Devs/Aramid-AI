@@ -2,6 +2,15 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Helper function to parse boolean values
+const parseBool = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    return value.toLowerCase() === 'true';
+  }
+  return false;
+};
+
 export const config = {
     twitter: {
         keys: {
@@ -12,11 +21,11 @@ export const config = {
             twitterUserID: process.env.TWITTER_USER_ID,
         },
         settings: {
-            xAutoPoster: process.env.TWITTER_POSTER || false,
-            devMode: process.env.TWITTER_DEV_MODE || false,
-            xAutoResponder: process.env.TWITTER_RESPONDER || false,
-            useDexScreenerLatestTokens: process.env.TWITTER_GATHER_DEXSCREENER_LATEST_TOKENS || false,
-            useDexScreenerTopBoosted: process.env.TWITTER_GATHER_DEXSCREENER_LATEST_BOOSTED_TOKENS || false,
+            xAutoPoster: parseBool(process.env.TWITTER_POSTER) || false,
+            devMode: parseBool(process.env.TWITTER_DEV_MODE) || false,
+            xAutoResponder: parseBool(process.env.TWITTER_RESPONDER) || false,
+            useDexScreenerLatestTokens: parseBool(process.env.TWITTER_GATHER_DEXSCREENER_LATEST_TOKENS) || false,
+            useDexScreenerTopBoosted: parseBool(process.env.TWITTER_GATHER_DEXSCREENER_LATEST_BOOSTED_TOKENS) || false,
             
             postsPerDay: process.env.TWITTER_POSTS_PER_DAY || 10,
             postsPerMonth: process.env.TWITTER_POSTS_PER_MONTH || 300,
@@ -26,12 +35,12 @@ export const config = {
 
     cryptoGlobals: {
         // settings to enable or disable trading
-        tradeTokenDevMode: process.env.CRYPTO_TRADE_DEV_MODE || false,
-        tradeTokens: process.env.CRYPTO_TRADE_TOKENS, // This is for the twitter portion of the bot and the auto-trading portion
-        tradeTokensInBackground: process.env.CRYPTO_TRADE_TOKENS_IN_BACKGROUND, // This is for the auto-trading portion only
+        tradeTokenDevMode: parseBool(process.env.CRYPTO_TRADE_DEV_MODE) || false,
+        tradeTokens: parseBool(process.env.CRYPTO_TRADE_TOKENS) || false, // This is for the twitter portion of the bot and the auto-trading portion
+        tradeTokensInBackground: parseBool(process.env.CRYPTO_TRADE_TOKENS_IN_BACKGROUND) || false, // This is for the auto-trading portion only
 
         // Ask AI for advice on open trades
-        askForAdviceFromAI: process.env.CRYPTO_TRADE_TOKENS_ASK_AI_TRADE_ADVICE || false,
+        askForAdviceFromAI: parseBool(process.env.CRYPTO_TRADE_TOKENS_ASK_AI_TRADE_ADVICE) || false,
 
         // Trading Times
         minPumpFunTime: (10 * 60), // 10 minutes in seconds

@@ -565,69 +565,72 @@ function splitAdvice(advice, maxLength = 1000) {
 
 export async function sendAIAdviceUpdate(advice, tradeDetails) {
   try {
-    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
-    if (!channel || !channel.isTextBased()) return;
-
-    // Validate required fields
-    if (!tradeDetails?.tradeId || !tradeDetails?.currentPrice || !tradeDetails?.entryPrice) {
-      console.log('Missing required trade details');
+    if (!advice || !tradeDetails) {
+      console.log('Missing advice or trade details');
       return;
     }
 
-    // Calculate current percentage change
-    const currentChange = ((parseFloat(tradeDetails.currentPrice) - parseFloat(tradeDetails.entryPrice)) 
-                          / parseFloat(tradeDetails.entryPrice)) * 100;
-
-    const fields = [
-      {
-        name: 'Trade ID',
-        value: tradeDetails.tradeId || 'Unknown',
-        inline: true
-      },
-      {
-        name: 'Token',
-        value: tradeDetails.tokenName || 'Unknown Token',
-        inline: true
-      }
-    ];
-
-    // Only add status field if we have required data
-    const statusValue = [
-      `Current Price: ${tradeDetails.currentPrice} SOL`,
-      `Entry Price: ${tradeDetails.entryPrice} SOL`,
-      `Current P/L: ${currentChange >= 0 ? '+' : ''}${currentChange.toFixed(2)}%`,
-      `Target Gain: ${tradeDetails.targetGain}%`,
-      `Stop Loss: ${tradeDetails.targetLoss}%`
-    ].join('\n');
-
-    fields.push({
-      name: 'Status',
-      value: statusValue,
-      inline: false
-    });
-
-    // Add recommendation field if we have advice
-    if (advice?.action) {
-      const recValue = advice.action === 'ADJUST' ?
-        `New Targets:\n• Target Gain: ${advice.adjustments?.targetGain}%\n• Stop Loss: ${advice.adjustments?.stopLoss}%` :
-        `Action: ${advice.action}`;
-
-      fields.push({
-        name: 'Recommendation',
-        value: recValue,
-        inline: false
-      });
+    const channel = botClient.channels.cache.get(config.discord.hiveChannel);
+    if (!channel || !channel.isTextBased()) {
+      console.log('Invalid channel');
+      return;
     }
+
+    // Ensure we have valid numeric values for calculations
+    const currentPrice = parseFloat(tradeDetails.currentPrice);
+    const entryPrice = parseFloat(tradeDetails.entryPrice);
+    
+    if (isNaN(currentPrice) || isNaN(entryPrice)) {
+      console.log('Invalid price values');
+      return;
+    }
+
+    const currentChange = ((currentPrice - entryPrice) / entryPrice) * 100;
 
     const embed = new EmbedBuilder()
       .setColor('#00FF00')
       .setTitle('🤖 AI Trading Analysis')
-      .setDescription('Latest trade analysis and recommendations');
+      .setDescription('Latest trade analysis and recommendations')
+      .addFields([
+        {
+          name: 'Trade ID',
+          value: tradeDetails.tradeId || 'Unknown',
+          inline: true
+        },
+        {
+          name: 'Token',
+          value: tradeDetails.tokenName || 'Unknown Token',
+          inline: true
+        },
+        {
+          name: 'Status',
+          value: [
+            `Current Price: ${currentPrice.toFixed(12)} SOL`,
+            `Entry Price: ${entryPrice.toFixed(12)} SOL`,
+            `Current P/L: ${currentChange >= 0 ? '+' : ''}${currentChange.toFixed(2)}%`,
+            `Target Gain: ${tradeDetails.targetGain}%`,
+            `Stop Loss: ${tradeDetails.targetLoss}%`
+          ].join('\n'),
+          inline: false
+        }
+      ]);
 
-    // Add validated fields
-    embed.addFields(fields);
+    // Add recommendation field if we have valid advice
+    if (advice.action === 'ADJUST' && advice.adjustments) {
+      embed.addFields({
+        name: 'Recommendation',
+        value: `New Targets:\n• Target Gain: ${advice.adjustments.targetGain}%\n• Stop Loss: ${advice.adjustments.stopLoss}%`,
+        inline: false
+      });
+    } else if (advice.action && advice.decision) {
+      embed.addFields({
+        name: 'Recommendation',
+        value: `Action: ${advice.action}\nDecision: ${advice.decision}`,
+        inline: false
+      });
+    }
+
     embed.setTimestamp();
-
     await channel.send({ embeds: [embed] });
   } catch (error) {
     console.error('Error sending AI advice update:', error);
@@ -705,4 +708,68 @@ export async function sendTradeTargetUpdate(updateResult) {
   } catch (error) {
     console.error('Error sending trade target update:', error);
   }
+}
+
+function parseAdviceResponse(advice) {
+  if (typeof advice !== 'string') return null;
+
+  // Parse "Adjust Trade" format 
+  const adjustMatch = advice.match(/Adjust Trade: targetPercentageGain: (\d+), targetPercentageLoss: (\d+)/);
+  if (adjustMatch) {
+    const targetGain = parseInt(adjustMatch[1]);
+    const targetLoss = parseInt(adjustMatch[2]);
+    
+    return {
+      action: 'ADJUST',
+      hasAdjustments: true,
+      adjustments: {
+        targetGain: targetGain,
+        stopLoss: targetLoss
+      }
+    };
+  }
+
+  // Parse "Sell Now" format
+  if (advice.toLowerCase().includes('sell now')) {
+    return {
+      action: 'SELL',
+      hasAdjustments: false,
+      decision: 'Sell Now'  // Added explicit decision text
+    };
+  }
+
+  // Parse "Hold" format 
+  if (advice.toLowerCase().includes('hold')) {
+    return {
+      action: 'HOLD', 
+      hasAdjustments: false,
+      decision: 'Hold'
+    };
+  }
+
+  return null;
+}
+
+function formatAdvice(parsedAdvice, tradeDetails) {
+  if (!tradeDetails) {
+    console.log('Missing required trade details');
+    return null;
+  }
+
+  const embed = {
+    title: '🤖 Trading Analysis & Advice',
+    details: 'No detailed analysis available',
+    currentStatus: `Current Price: ${tradeDetails.currentPrice || 'N/A'} SOL\nEntry Price: ${tradeDetails.entryPrice || 'N/A'} SOL\nTarget Gain: ${tradeDetails.targetGain || 'N/A'}%\nStop Loss: ${tradeDetails.targetLoss || 'N/A'}%`,
+    recommendation: ''
+  };
+
+  if (parsedAdvice.action === 'ADJUST' && parsedAdvice.adjustments) {
+    embed.recommendation = `Decision: Adjust Targets\nNew Targets:\n• Target Gain: ${parsedAdvice.adjustments.targetGain}%\n• Stop Loss: ${parsedAdvice.adjustments.stopLoss}%`;
+  } else if (parsedAdvice.action && parsedAdvice.decision) {
+    embed.recommendation = `Decision: ${parsedAdvice.decision}\nAction: ${parsedAdvice.action}`;
+  } else {
+    embed.recommendation = 'No clear recommendation available';
+  }
+
+  return embed;
 }
