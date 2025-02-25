@@ -83,7 +83,9 @@ function parseAdviceResponse(response) {
         
         // Return the decision with analysis from response field
         return {
-          action: advice.decision.startsWith('Hold') ? 'HOLD' : 'SELL',
+          action: advice.decision === 'Sell Now' ? 'SELL' : 
+                 advice.decision.startsWith('Hold') ? 'HOLD' : 
+                 advice.decision,
           hasAdjustments: false,
           reason: advice.response || '',
           decision: advice.decision,
@@ -97,8 +99,20 @@ function parseAdviceResponse(response) {
 
   // Handle existing plain text formats
   if (typeof response === 'string') {
-    if (response.startsWith('Adjust Trade:')) {
-      const matches = response.match(/targetPercentageGain: (\d+), targetPercentageLoss: (\d+)/);
+    const responseText = response.trim();
+    
+    // Direct "Sell Now" handling
+    if (responseText === 'Sell Now') {
+      return {
+        action: 'SELL',
+        hasAdjustments: false,
+        decision: 'Sell Now',
+        reason: 'Market conditions indicate immediate sell'
+      };
+    }
+
+    if (responseText.startsWith('Adjust Trade:')) {
+      const matches = responseText.match(/targetPercentageGain: (\d+), targetPercentageLoss: (\d+)/);
       if (matches) {
         return {
           action: 'ADJUST',
@@ -106,12 +120,13 @@ function parseAdviceResponse(response) {
           adjustments: {
             targetGain: parseInt(matches[1]),
             stopLoss: parseInt(matches[2])
-          }
+          },
+          decision: responseText
         };
       }
     }
     
-    if (response === 'Hold') {
+    if (responseText === 'Hold') {
       return {
         action: 'HOLD',
         hasAdjustments: false,

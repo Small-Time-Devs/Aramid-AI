@@ -121,20 +121,20 @@ async function pickNewTokenNonBoosted() {
     ${investmentAgent.response}\n
     ${investmentAgent.decision}`;
     
-    let agetnAnalysisComment = `${anaylstAgent.name}:\n${anaylstAgent.response}`;
+    let agentAnalysisComment = `${anaylstAgent.name}:\n${anaylstAgent.response}`;
     let agentTweetPost = `${tweetAgent.name}:\n${tweetAgent.response}`;
     let agentComment = `${commentAgent.name}:\n${commentAgent.response}`;
-    let agetnHashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
+    let agentHashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
     let agentInvestmentComment = `${investmentAgent.name}:\n${investmentAgent.response}`;
     let agentInvestmentDecisionComment = `${investmentAgent.decision}`;
 
     const tweetData = {
         tweet,
         comment,
-        agetnAnalysisComment,
+        agentAnalysisComment,
         agentTweetPost,
         agentComment,
-        agetnHashtagsComment,
+        agentHashtagsComment,
         agentInvestmentComment,
         agentInvestmentDecisionComment,
         tokenData,
@@ -151,7 +151,7 @@ export async function postToTwitter(tweetData, client) {
   try {
     // Send tweet data to hive channel first
     await sendAnalysisMessage('tweet', {
-      analysis: tweetData.agetnAnalysisComment,
+      analysis: tweetData.agentAnalysisComment,
       investment: tweetData.agentInvestmentComment,
       decision: tweetData.agentInvestmentDecisionComment
     });
@@ -255,11 +255,11 @@ export async function postToTwitter(tweetData, client) {
         new Date().toISOString(),                     // date
         tweetData.tweet,                              // tweet
         tweetData.comment,                            // comment
-        tweetData.agetnHashtagsComment,               // hashtagsComment
-        tweetData.agetnAnalysisComment,               // analysisComment
+        tweetData.agentHashtagsComment,               // hashtagsComment
+        tweetData.agentAnalysisComment,               // analysisComment
         tweetData.agentTweetPost,                     // tweetPost
         tweetData.agentComment,                       // agentComment
-        tweetData.agetnHashtagsComment,               // hashtagsContent
+        tweetData.agentHashtagsComment,               // hashtagsContent
         tweetData.agentInvestmentComment,             // investmentComment
         tweetData.agentInvestmentDecisionComment,     // investmentDecision
         JSON.stringify(tweetData.tokenData, null, 2)  // tokenData
