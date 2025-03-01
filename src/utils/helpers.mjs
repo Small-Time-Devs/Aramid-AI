@@ -1,5 +1,5 @@
 import { TwitterApi } from 'twitter-api-v2';
-import { fetchLatestTokenProfiles, fetchTokenNameAndSymbol, fetchTokenPrice, fetchTokenPairs, fetchTokenOrders, fetchPoolInfo, checkTokenAuthority } from './apiUtils.mjs';
+import { fetchLatestTokenProfiles, fetchLatestBoostedTokens, fetchTokenPairs, fetchNewJupTokens } from './apiUtils.mjs';
 import { config } from '../config/config.mjs';
 
 let rateLimitRemaining = null;
@@ -38,6 +38,10 @@ export async function checkRateLimit(client) {
   }
 }
 
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 export function updateRateLimitInfo(headers) {
   if (!headers) {
     console.warn('No headers provided to update rate limit info. Assuming no active rate limit.');
@@ -70,16 +74,118 @@ export async function fetchWithTimeout(resource, options = {}) {
     return response;
 }
 
-export async function fetchTokenData() {
+export async function fetchLatestTokenData() {
   try {
-    const tokenProfiles = await fetchLatestTokenProfiles();
+    let tokenProfiles = null;
+    let validTokens = [];  // Changed from const to let
+    
+    if (config.cryptoGlobals.useDexScreenerTopBoosted || config.cryptoGlobals.useDexScreenerLatestTokens) {
+      tokenProfiles = await fetchLatestTokenProfiles();
+      validTokens = tokenProfiles.filter(token => 
+        token.tokenAddress && 
+        token.chainId === "solana"
+      );
+    } else if (config.cryptoGlobals.useDexScreenerTopBoosted || config.cryptoGlobals.useDexScreenerTopBoosted) {
+      tokenProfiles = await fetchLatestBoostedTokens();
+      validTokens = tokenProfiles.filter(token => 
+        token.tokenAddress && 
+        token.chainId === "solana"
+      );
+    } else if (config.cryptoGlobals.useJupNewTokens) {
+      tokenProfiles = await fetchNewJupTokens();
+      const currentTime = Math.floor(Date.now() / 1000); // Current Unix timestamp
+      const maxTime = currentTime - config.cryptoGlobals.maxPumpFunTime;
+      const minTime = currentTime - config.cryptoGlobals.minPumpFunTime;
+      
+      validTokens = tokenProfiles.filter(token => 
+        token.mint && 
+        token.metadata_updated_at && 
+        parseInt(token.metadata_updated_at) <= minTime &&
+        parseInt(token.metadata_updated_at) >= maxTime
+      );
+
+      if (config.cryptoGlobals.tradeTokenDevMode) {
+        console.log('-----------------------------------------------------------------');
+        console.log('Current time:', new Date(currentTime * 1000).toLocaleString());
+        console.log('30 minutes ago:', new Date(maxTime * 1000).toLocaleString());
+        console.log('10 minutes ago:', new Date(minTime * 1000).toLocaleString());
+        console.log('Number of tokens within time window:', validTokens.length);
+        if (validTokens.length > 0) {
+          console.log('Sample token time:', new Date(parseInt(validTokens[0].metadata_updated_at) * 1000).toLocaleString());
+        }
+        console.log('-----------------------------------------------------------------');
+      }
+    }
+
+    if (validTokens.length === 0) {
+      console.error('No valid Solana tokens found in response going to call fetTokenData again to check if its a fluke!');
+    }
+
+    const randomToken = validTokens[Math.floor(Math.random() * validTokens.length)];
+    if (config.twitter.settings.devMode || config.cryptoGlobals.tradeTokenDevMode) {
+      console.log('Random Solana token picked information:', randomToken);
+    }
+    
+    let tokenAddress = null;
+    let chainId = null;
+    
+    if (config.cryptoGlobals.useDexScreenerLatestTokens || config.cryptoGlobals.useDexScreenerTopBoosted) {
+      tokenAddress = randomToken.tokenAddress;
+      chainId = randomToken.chainId;
+    } else if (config.cryptoGlobals.useJupNewTokens) {
+      tokenAddress = randomToken.mint;
+      chainId = "solana";
+    }
+    
+    const tokenTradeInfo = await fetchTokenPairs(tokenAddress);
+    const TokenName = tokenTradeInfo.tokenName;
+    const TokenSymbol = tokenTradeInfo.tokenSymbol;
+    const TokenPriceUSD = tokenTradeInfo.priceUsd;
+    const TokenPriceSOL = tokenTradeInfo.priceNative;
+
+    try {
+      
+      if (config.twitter.settings.devMode || config.cryptoGlobals.tradeTokenDevMode){
+          console.log('-----------------------------------------------------------------');
+          console.log('---------------------------DEV DEBUG LOG-------------------------');
+          console.log('Token Name:', TokenName);
+          console.log('Token Symbol:', TokenSymbol);
+          console.log('Chain ID:', chainId);
+          console.log('Token Address:', tokenAddress);
+          console.log('Token Price USD:', TokenPriceUSD);
+          console.log('Token Price SOL:', TokenPriceSOL);
+          console.log('-----------------------------------------------------------------');
+      }
+
+      return {
+        tokenAddress,
+        chainId,
+        TokenName,
+        TokenSymbol,
+        TokenPriceUSD,
+        TokenPriceSOL
+      };
+
+    } catch (error) {
+      console.error(`Error processing token name, symbol or price data, going to try fetching again`, error);
+      sleep(1000);
+      await fetchLatestTokenData();
+    }
+  } catch (error) {
+    console.error(`Error processing token data from dexscreener, going to try fetching again`, error);
+    sleep(1000);
+    await fetchLatestTokenData();
+  }
+}
+
+export async function fetchBoostedTokenData() {
+  try {
+    const tokenProfiles = await fetchLatestBoostedTokens();
     
     // Filter for Solana tokens only
     const validTokens = tokenProfiles.filter(token => 
       token.tokenAddress && 
-      token.chainId === "solana" && // Only Solana tokens
-      token.description &&
-      token.links
+      token.chainId === "solana"
     );
 
     if (validTokens.length === 0) {
@@ -88,124 +194,26 @@ export async function fetchTokenData() {
 
     // Select a random Solana token
     const randomToken = validTokens[Math.floor(Math.random() * validTokens.length)];
-    if (config.twitter.settings.devMode) {
+    if (config.twitter.settings.devMode || config.cryptoGlobals.tradeTokenDevMode) {
       console.log('Random Solana token picked information:', randomToken);
     }
-
-    // Improve social link checks
-    const tokenTwitterURL = randomToken.links?.find(link => 
-      link.type === 'twitter' || 
-      (link.url && link.url.toLowerCase().includes('twitter'))
-    )?.url || "No Twitter Account On DexScreener Token Profile";
-
-    const tokenWebsiteURL = randomToken.links?.find(link => 
-      link.label === 'Website' || 
-      (link.url && link.url.toLowerCase().includes('website'))
-    )?.url || "No Website On DexScreener Token Profile";
-
-    const tokenDescription = randomToken.description;
     const tokenAddress = randomToken.tokenAddress;
+    const chainId = randomToken.chainId;
 
     // Move on to gather more information about the token like the name
     try {
-      const tokenPairInfo = await fetchTokenPairs('solana', tokenAddress) || "Raydium API Cant Find Token Volume";
-      /*
-      Example returned value
-          // Extract required values
-    const result = {
-      tokenName: filteredPair.baseToken.name,
-      tokenSymbol: filteredPair.baseToken.symbol,
-      priceNative: filteredPair.priceNative,
-      priceUsd: filteredPair.priceUsd,
-      txns24h: filteredPair.txns.h24,
-      volume24h: filteredPair.volume.h24,
-      priceChange5m: filteredPair.priceChange.m5,
-      priceChange1h: filteredPair.priceChange.h1,
-      priceChange6h: filteredPair.priceChange.h6,
-      priceChange24h: filteredPair.priceChange.h24,
-      liquidityUsd: filteredPair.liquidity.usd,
-      liquidityBase: filteredPair.liquidity.base,
-      liquidityQuote: filteredPair.liquidity.quote,
-      fdv: filteredPair.fdv,
-      marketCap: filteredPair.marketCap
-    };
-
-    return result;
-      */
-      const checkIfSafe = await checkTokenAuthority(tokenAddress);
-      if (config.twitter.settings.devMode) {
-        console.log('Check if token is safe:', checkIfSafe); 
-      }
- 
-
-      const tokenName = tokenPairInfo.tokenName;
-      const tokenSymbol = tokenPairInfo.tokenSymbol;
-      const tokenPriceInSol = tokenPairInfo.priceNative;
-      const tokenPriceInUSD = tokenPairInfo.priceUsd;
-      const tokenVolume24h = tokenPairInfo.volume24h;
-      const tokenPriceChange5m = tokenPairInfo.priceChange5m;
-      const tokenPriceChange1h = tokenPairInfo.priceChange1h;
-      const tokenPriceChange6h = tokenPairInfo.priceChange6h;
-      const tokenPriceChange24h = tokenPairInfo.priceChange24h;
-      const tokenLiquidityUSD = tokenPairInfo.liquidityUsd;
-      const tokenLiquidityBase = tokenPairInfo.liquidityBase;
-      const tokenLiquidityQuote = tokenPairInfo.liquidityQuote;
-      const tokenFDV = tokenPairInfo.fdv;
-      const tokenMarketCap = tokenPairInfo.marketCap;
-      const unixTimeCreated = tokenPairInfo.timeCreated;
-      const tokenSafe = checkIfSafe.safe;
-      const tokenFreezeAuthority = checkIfSafe.freezeAuthority;
-      const tokenMintAuthority = checkIfSafe.mintAuthority;
-
-      // Convert Unix timestamp to human-readable date
-      const dateCreated = new Date(unixTimeCreated * 1000).toUTCString();
       
       if (config.twitter.settings.devMode) {
         console.log('-----------------------------------------------------------------');
         console.log('---------------------------DEV DEBUG LOG-------------------------');
-        console.log('Date Created:', dateCreated);
-        console.log('Token Name:', tokenName);
-        console.log('Token Symbol:', tokenSymbol);
-        console.log('Token Description:', tokenDescription);
         console.log('Token Address:', tokenAddress);
-        console.log('Token Twitter URL:', tokenTwitterURL);
-        console.log('Token Website URL:', tokenWebsiteURL);
-        console.log('-----------------------------------------------------------------');
-        console.log('Token Price In Sol:', tokenPriceInSol);
-        console.log('Token Price In USD:', tokenPriceInUSD);
-        console.log('Token Volume 24h:', tokenVolume24h);
-        console.log('Token Price Change 5m:', tokenPriceChange5m);
-        console.log('Token Price Change 1h:', tokenPriceChange1h);
-        console.log('Token Price Change 6h:', tokenPriceChange6h);
-        console.log('Token Price Change 24h:', tokenPriceChange24h);
-        console.log('Token Liquidity USD:', tokenLiquidityUSD);
-        console.log('Token Liquidity Base:', tokenLiquidityBase);
-        console.log('Token Liquidity Quote:', tokenLiquidityQuote);
-        console.log('Token FDV:', tokenFDV);
-        console.log('Token Market Cap:', tokenMarketCap);
+        console.log('Chain ID:', chainId);
         console.log('-----------------------------------------------------------------');
       }
 
       return {
-        dateCreated,
-        tokenName: tokenName || "Unnamed Token", // Provide default value
-        tokenSymbol: tokenSymbol || "NO_SYMBOL", // Provide default value
-        tokenDescription,
         tokenAddress,
-        tokenTwitterURL: String(tokenTwitterURL), // Ensure string
-        tokenWebsiteURL: String(tokenWebsiteURL), // Ensure string
-        tokenPriceInSol: tokenPriceInSol || "No price returned",
-        tokenPriceInUSD: tokenPriceInUSD || "No price returned",
-        tokenVolume24h: tokenVolume24h || "No volume data",
-        tokenPriceChange5m: tokenPriceChange5m || "No data",
-        tokenPriceChange1h: tokenPriceChange1h || "No data", 
-        tokenPriceChange6h: tokenPriceChange6h || "No data",
-        tokenPriceChange24h: tokenPriceChange24h || "No data",
-        tokenLiquidityUSD: tokenLiquidityUSD || "No liquidity data",
-        tokenLiquidityBase: tokenLiquidityBase || "No data",
-        tokenLiquidityQuote: tokenLiquidityQuote || "No data", 
-        tokenFDV: tokenFDV || "No FDV data",
-        tokenMarketCap: tokenMarketCap || "No market cap data"
+        chainId
       };
 
     } catch (error) {

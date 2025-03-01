@@ -38,22 +38,39 @@ const docClient = DynamoDBDocumentClient.from(client, {
   },
 });
 
-export async function saveTweetData(tweetId, date, tweet, comment, hashtags, analysisResponse, investmentComment, investmentDecisionComment, tweetData ) {
+export async function saveTweetData(
+  tweetId, 
+  date, 
+  tweet, 
+  comment, 
+  hashtagsComment,
+  analysisComment,
+  tweetPost,
+  agentComment,
+  hashtagsContent,
+  investmentComment,
+  investmentDecision,
+  tokenData
+) {
     const tableName = 'AramidAI-X-Past-Tweets';
-
+  
     try {
       const putParams = {
         TableName: tableName,
         Item: {
           TweetID: tweetId,      // Primary key
           Date: date,            // ISO format date string
-          Tweet: tweet,          // Main tweet content
-          Comment: comment,      // Reply comment
-          Hashtags: hashtags,    // Hashtags as a string
-          AnaylsisResponse: analysisResponse,   // Analysis response
-          InvestmentComment: investmentComment,  // Investment comment
-          InvestmentDecisionComment: investmentDecisionComment,  // Investment decision comment
-          TweetData: tweetData,  // Additional tweet data
+          Tweet: tweet,          // Combined tweet content
+          Comment: comment,      // Combined comment
+          // Individual agent responses
+          AgentAnalysisComment: analysisComment,
+          AgentTweetPost: tweetPost,
+          AgentCommentPost: agentComment,
+          AgentHashtagsComment: hashtagsContent,
+          AgentInvestmentComment: investmentComment,
+          AgentInvestmentDecision: investmentDecision,
+          TokenData: tokenData,  // Token data
+          Timestamp: new Date().toISOString()
         }
       };
   
@@ -65,7 +82,7 @@ export async function saveTweetData(tweetId, date, tweet, comment, hashtags, ana
       console.error('Error saving tweet data:', JSON.stringify(error, null, 2));
       throw error;
     }
-  }
+}
 
 // Store trade information in DynamoDB
 export async function storeTradeInfo(data) {
@@ -87,6 +104,7 @@ export async function storeTradeInfo(data) {
         sellPercentageLoss: data.sellPercentageLoss || null,
         status: 'ACTIVE',
         tokensReceived: data.tokensReceived, // Add new field for tokens received
+        tradeType: data.tradeType, // Add trade type (INVEST, QUICK_PROFIT, or DEGEN)
         timestamp: new Date().toISOString()
       }
     };
@@ -103,24 +121,16 @@ export async function storeTradeInfo(data) {
 // Update trade with sell information
 export async function updateTradeWithSellInfo(tradeId, sellData) {
   try {
-    const params = {
-      TableName: 'AramidAI-X-Trades',
-      Key: { tradeId },
-      UpdateExpression: 'SET exitPriceSOL = :exitSOL, exitPriceUSD = :exitUSD, sellPercentageGain = :gain, sellPercentageLoss = :loss, #tradeStatus = :statusValue',
-      ExpressionAttributeNames: {
-        '#tradeStatus': 'status'  // Use a different name for the status attribute
-      },
-      ExpressionAttributeValues: {
-        ':exitSOL': sellData.exitPriceSOL,
-        ':exitUSD': sellData.exitPriceUSD,
-        ':gain': sellData.sellPercentageGain,
-        ':loss': sellData.sellPercentageLoss,
-        ':statusValue': 'COMPLETED'
-      }
-    };
+    // First get the complete trade data
+    const trade = await getTrade(tradeId);
+    if (!trade) {
+      throw new Error(`No trade found with ID: ${tradeId}`);
+    }
 
-    const command = new UpdateCommand(params);
-    await docClient.send(command);
+    // Move trade to past trades with sell info
+    await moveTradeToPastTrades(trade, sellData);
+
+    return true;
   } catch (error) {
     console.error('Error updating trade with sell info:', error);
     throw error;
@@ -139,13 +149,14 @@ export async function getTrade(tradeId) {
     const response = await docClient.send(command);
     
     if (!response.Item) {
-      throw new Error(`No trade found with ID: ${tradeId}`);
+      console.log(`Trade ${tradeId} not found - it may have been completed or removed`);
+      return null;
     }
 
     return response.Item;
   } catch (error) {
-    console.error(`Error getting trade with ID ${tradeId}:`, error);
-    throw error;
+    console.error(`Error accessing trade with ID ${tradeId}:`, error);
+    return null;
   }
 }
 
@@ -175,13 +186,12 @@ export async function getActiveTrades() {
 
 // Get wallet details
 export async function getWalletDetails() {
-    console.log('Getting wallet details');
-    console.log('Public key:', config.cryptoGlobals.publicKey);
+  console.log('Getting wallet details');
   try {
     const params = {
       TableName: 'AramidAI-X-Wallets',
       Key: { 
-        solPublicKey: config.cryptoGlobals.publicKey // Using original config import
+        solPublicKey: config.cryptoGlobals.publicKey
       }
     };
 
@@ -192,7 +202,7 @@ export async function getWalletDetails() {
       throw new Error('No wallet details found');
     }
 
-    // Return the wallet details with the encrypted private key
+    // Return both public and private keys
     return {
       solPublicKey: response.Item.solPublicKey,
       solPrivateKey: response.Item.solPrivateKey
@@ -200,5 +210,181 @@ export async function getWalletDetails() {
   } catch (error) {
     console.error('Error getting wallet details:', error);
     throw error;
+  }
+}
+
+export async function findActiveTradeByToken(tokenAddress) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      FilterExpression: '#status = :status AND tokenAddress = :tokenAddress',
+      ExpressionAttributeNames: {
+        '#status': 'status'
+      },
+      ExpressionAttributeValues: {
+        ':status': 'ACTIVE',
+        ':tokenAddress': tokenAddress
+      }
+    };
+
+    console.log('Looking for existing trade:', { tokenAddress });
+    const command = new ScanCommand(params);
+    const response = await docClient.send(command);
+    
+    if (response.Items && response.Items.length > 0) {
+      console.log('Found existing trade:', response.Items[0]);
+    }
+    
+    return response.Items?.[0] || null;
+  } catch (error) {
+    console.error('Error finding active trade by token:', error);
+    throw error;
+  }
+}
+
+export async function updateTradeAmounts(tradeId, additionalAmount, additionalTokens) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      Key: { tradeId },
+      UpdateExpression: 'SET amountInvested = amountInvested + :amount, tokensReceived = tokensReceived + :tokens',
+      ExpressionAttributeValues: {
+        ':amount': parseFloat(additionalAmount) || 0,
+        ':tokens': parseFloat(additionalTokens) || 0
+      },
+      ReturnValues: 'ALL_NEW'
+    };
+
+    // Log update attempt
+    console.log('Updating trade amounts:', {
+      tradeId,
+      additionalAmount: params.ExpressionAttributeValues[':amount'],
+      additionalTokens: params.ExpressionAttributeValues[':tokens']
+    });
+
+    const command = new UpdateCommand(params);
+    const response = await docClient.send(command);
+    
+    console.log('Trade updated successfully:', response.Attributes);
+    return response.Attributes;
+  } catch (error) {
+    console.error('Error updating trade amounts:', error);
+    throw error;
+  }
+}
+
+export async function updateTradeTargets(tradeId, targetGain, targetLoss) {
+  try {
+    // First get the current trade data
+    const currentTrade = await getTrade(tradeId);
+    if (!currentTrade) {
+      throw new Error('Trade not found');
+    }
+
+    // Capture old values before update
+    const oldValues = {
+      gain: currentTrade.targetPercentageGain,
+      loss: currentTrade.targetPercentageLoss
+    };
+
+    // Proceed with update
+    const params = {
+      TableName: 'AramidAI-X-Trades',
+      Key: { tradeId },
+      UpdateExpression: 'set targetPercentageGain = :g, targetPercentageLoss = :l',
+      ExpressionAttributeValues: {
+        ':g': targetGain,
+        ':l': targetLoss
+      },
+      ReturnValues: 'ALL_NEW'
+    };
+
+    const command = new UpdateCommand(params);
+    const response = await docClient.send(command);
+
+    // Return old and new values with validation
+    return {
+      success: true,
+      oldValues: {
+        gain: oldValues.gain,
+        loss: oldValues.loss
+      },
+      newValues: {
+        gain: targetGain,
+        loss: targetLoss
+      },
+      tokenName: currentTrade.tokenName,
+      tokenAddress: currentTrade.tokenAddress
+    };
+  } catch (error) {
+    console.error('Error updating trade targets:', error);
+    throw error;
+  }
+}
+
+export async function moveTradeToPastTrades(trade, sellInfo) {
+  try {
+    // Don't send notification here since it's handled in executeTradeSell
+    const pastTradeParams = {
+      TableName: 'AramidAI-X-PastTrades',
+      Item: {
+        ...trade,
+        exitPriceSOL: sellInfo.exitPriceSOL,
+        exitPriceUSD: sellInfo.exitPriceUSD,
+        sellPercentageGain: sellInfo.sellPercentageGain,
+        sellPercentageLoss: sellInfo.sellPercentageLoss,
+        status: sellInfo.status || 'COMPLETED',
+        reason: sellInfo.reason || null,
+        completedAt: new Date().toISOString()
+      }
+    };
+
+    await docClient.send(new PutCommand(pastTradeParams));
+    console.log(`Trade ${trade.tradeId} archived to past trades`);
+
+    await docClient.send(new DeleteCommand({
+      TableName: 'AramidAI-X-Trades',
+      Key: { tradeId: trade.tradeId }
+    }));
+    console.log(`Trade ${trade.tradeId} removed from active trades`);
+
+    return true;
+  } catch (error) {
+    console.error('Error archiving trade:', error);
+    throw error;
+  }
+}
+
+export async function checkPastTrades(tokenAddress) {
+  try {
+    const params = {
+      TableName: 'AramidAI-X-PastTrades',
+      FilterExpression: 'tokenAddress = :tokenAddress',
+      ExpressionAttributeValues: {
+        ':tokenAddress': tokenAddress
+      }
+    };
+
+    const command = new ScanCommand(params);
+    const response = await docClient.send(command);
+    
+    if (response.Items && response.Items.length > 0) {
+      // Find most recent trade for this token
+      const mostRecentTrade = response.Items.reduce((latest, trade) => {
+        return (!latest || trade.timestamp > latest.timestamp) ? trade : latest;
+      });
+      
+      const tradeTime = new Date(mostRecentTrade.timestamp).getTime();
+      const currentTime = new Date().getTime();
+      const hoursSinceLastTrade = (currentTime - tradeTime) / (1000 * 60 * 60);
+      
+      // Return true if we've traded this token within the cooldown period
+      return hoursSinceLastTrade < config.cryptoGlobals.tradeCooldownHours;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error checking past trades:', error);
+    return false;
   }
 }

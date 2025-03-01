@@ -3,39 +3,14 @@ import { config } from '../config/config.mjs';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { getMint } from '@solana/spl-token';
 
-export async function fetchCryptoData(cryptoName) {
-    try {
-        const response = await axios.get(`${config.apis.crypto.coinGecko}${cryptoName}`);
-        if (!response.data[cryptoName]) {
-            throw new Error(`No data found for ${cryptoName}`);
-        }
-        return response.data;
-    } catch (error) {
-        console.error('Error fetching crypto data:', error);
-        console.error(`Failed to fetch data for ${cryptoName}.`);
-    }
-}
-
-export async function fetchCryptoMarketData() {
-    try {
-        const response = await axios.get(`${config.apis.crypto.coinGecko}/coins/markets`, {
-            params: {
-                vs_currency: 'usd',
-                order: 'market_cap_desc',
-                per_page: 10,
-                page: 1,
-                sparkline: false,
-            },
-        });
-
-        if (response.data && response.data.length > 0) {
-            return response.data;
-        }
-        return [];
-    } catch (error) {
-        console.error('Error fetching crypto market data:', error);
-        return [];
-    }
+export async function fetchNewJupTokens() {
+  try {
+    const response = await axios.get(config.apis.crypto.latestJupTokens);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching new Jupiter tokens:', error);
+    throw new Error('Failed to fetch new Jupiter tokens.');
+  }
 }
 
 export async function fetchLatestTokenProfiles() {
@@ -58,38 +33,55 @@ export async function fetchLatestBoostedTokens() {
   }
 }
 
-export async function fetchTokenNameAndSymbol(contractAddress) {
-    try {
-        const response = await axios.get(`${config.apis.crypto.raydiumMintIds}${contractAddress}`);
-        if (response.data && response.data.success && response.data.data.length > 0) {
-            return {
-                tokenName: response.data.data[0].name,
-                tokenSymbol: response.data.data[0].symbol,
-            };
-        }
-    } catch (error) {
-        console.error(`Error fetching token name for contract address ${contractAddress}`);
-    }
-}
-
-export async function fetchTokenPrice(contractAddress) {
-    try {
-        const response = await axios.get(`${config.apis.crypto.raydiumMintPrice}${contractAddress}`);
-        if (response.data && response.data.success && response.data.data[contractAddress]) {
-            return response.data.data[contractAddress];
-        }
-    } catch (error) {
-        console.error(`Error fetching token price for contract address ${contractAddress}`);
-    }
-}
-
-export async function fetchTokenPairs(chainId, tokenAddress) {
+export async function fetchLatestJupTokens() {
   try {
-    const response = await axios.get(`https://api.dexscreener.com/token-pairs/v1/${chainId}/${tokenAddress}`);
+    const response = await axios.get(config.apis.crypto.latestJupTokens);
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching latest boosted tokens:', error);
+    throw new Error('Failed to fetch latest boosted tokens.');
+  }
+}
+
+// Step 1 - Fetch Token Name and Symbol
+export async function fetchTokenNameAndSymbol(contractAddress) {
+  try {
+      const response = await axios.get(`${config.apis.crypto.raydiumMintIds}${contractAddress}`);
+      if (response.data && response.data.success && response.data.data.length > 0) {
+          return {
+              tokenName: response.data.data[0].name,
+              tokenSymbol: response.data.data[0].symbol,
+              decimals: response.data.data[0].decimals,
+          };
+      }
+  } catch (error) {
+      console.error(`Error fetching token name for contract address ${contractAddress}`);
+  }
+}
+
+export async function fetchTokenPriceUSD(contractAddress) {
+  try {
+      const response = await axios.get(`${config.apis.crypto.raydiumMintPrice}${contractAddress}`);
+      if (response.data && response.data.success && response.data.data[contractAddress]) {
+          return response.data.data[contractAddress];
+      }
+  } catch (error) {
+      console.error(`Error fetching token price for contract address ${contractAddress}`);
+  }
+}
+
+export async function fetchTokenPairs(tokenAddress) {
+  try {
+    const response = await axios.get(`https://api.dexscreener.com/token-pairs/v1/solana/${tokenAddress}`);
     const tokenPairs = response.data;
 
-    // Filter to exclude the "pumpfun" dexId and take the first valid pair
-    const filteredPair = tokenPairs.find(pair => pair.dexId !== "pumpfun");
+    // Filter to exclude the dexID passed and the quote token symbol
+    let filteredPair = null;
+    if (config.cryptoGlobals.useDexScreenerLatestTokens || config.cryptoGlobals.useDexScreenerTopBoosted) {
+      filteredPair = tokenPairs.find(pair => pair.dexId == 'raydium' && pair.quoteToken.symbol == 'SOL');
+    }else if (config.cryptoGlobals.useJupNewTokens) {
+      filteredPair = tokenPairs.find(pair => pair.dexId == 'raydium' || pair.dexId == 'pumpfun' && pair.quoteToken.symbol == 'SOL');
+    }
 
     if (!filteredPair) {
       throw new Error("No valid token pairs found");
@@ -99,81 +91,28 @@ export async function fetchTokenPairs(chainId, tokenAddress) {
     const result = {
       tokenName: filteredPair.baseToken.name,
       tokenSymbol: filteredPair.baseToken.symbol,
-      priceNative: filteredPair.priceNative,
-      priceUsd: filteredPair.priceUsd,
-      txns24h: filteredPair.txns.h24,
-      volume24h: filteredPair.volume.h24,
-      priceChange5m: filteredPair.priceChange.m5,
-      priceChange1h: filteredPair.priceChange.h1,
-      priceChange6h: filteredPair.priceChange.h6,
-      priceChange24h: filteredPair.priceChange.h24,
-      liquidityUsd: filteredPair.liquidity.usd,
-      liquidityBase: filteredPair.liquidity.base,
-      liquidityQuote: filteredPair.liquidity.quote,
-      fdv: filteredPair.fdv,
-      marketCap: filteredPair.marketCap,
-      timeCreated: filteredPair.pairCreatedAt,
+
+      priceNative: filteredPair.priceNative, // SOL price
+      priceUsd: filteredPair.priceUsd, // USD price
+
     };
 
     return result;
   } catch (error) {
-    console.error(`Error fetching token pairs for ${tokenAddress} on ${chainId}:`, error);
-    throw new Error(`Failed to fetch token pairs for ${tokenAddress} on ${chainId}.`);
+    console.error(`Error fetching token pairs for ${tokenAddress}`, error);
+    throw new Error(`Failed to fetch token pairs for ${tokenAddress}`);
   }
 }
-
-export async function fetchTokenOrders(chainId, tokenAddress) {
+//chainID, tokenAddress, entryPrice, targetGain, targetLoss
+export async function autoTradingAdvice(chainId, tokenAddress, entryPrice, targetGain, targetLoss) {
   try {
-    const response = await axios.get(`https://api.dexscreener.com/orders/v1/${chainId}/${tokenAddress}`);
-    return response.data;
-  } catch (error) {
-    console.error(`Error fetching token orders for ${tokenAddress} on ${chainId}:`, error);
-    throw new Error(`Failed to fetch token orders for ${tokenAddress} on ${chainId}.`);
-  }
-}
-
-export async function fetchPoolInfo(contractAddress) {
-  try {
-    const mint1 = 'So11111111111111111111111111111111111111112'; // Default SOL mint address
-    const url = `${globalURLS.raydiumMintAPI}?mint1=${mint1}&mint2=${contractAddress}&poolType=all&poolSortField=default&sortType=desc&pageSize=1&page=1`;
-
-    console.log(`Fetching token details from: ${url}`);
-
-    const response = await axios.get(url);
-    if (config.twitter.settings.devMode) {
-      console.log('Full response from Raydium API:', JSON.stringify(response.data, null, 2));
+    const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/autoTrading-agent-advice', { chain: chainId, contractAddress: tokenAddress, entryPriceSOL: entryPrice, targetPercentageGain: targetGain, targetPercentageLoss: targetLoss });
+    if (config.cryptoGlobals.tradeTokenDevMode) {
+      console.log("Received response from external API:", response.data);
     }
-
-    if (response.status === 200 && response.data?.data?.data?.length > 0) {
-      return response.data.data.data[0]; // Adjusted to match nested data structure
-    }
-
-    console.error(`Token details not found for mint address: ${contractAddress}`);
-    return null;
+    return response.data.agents;
   } catch (error) {
-    console.error(`Error fetching token details for ${contractAddress}:`, error.message);
-    return null;
-  }
-}
-
-export async function checkTokenAuthority(mintAddress) {
-  try {
-    const connection = new Connection(config.cryptoGlobals.rpcNode);
-    const mintPublicKey = new PublicKey(mintAddress);
-    
-    const mintInfo = await getMint(connection, mintPublicKey);
-    
-    const hasFreeze = mintInfo.freezeAuthority !== null;
-    const hasMint = mintInfo.mintAuthority !== null;
-    
-    return {
-      safe: !hasFreeze && !hasMint,
-      hasFreeze,
-      hasMint,
-      decimals: mintInfo.decimals,
-    };
-  } catch (error) {
-    console.error('Error checking token authority:', error);
-    throw error;
+    console.error("Error connecting to external API:", error.response ? error.response.data : error.message);
+    throw new Error("Failed to connect to external API.");
   }
 }

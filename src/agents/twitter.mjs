@@ -1,13 +1,12 @@
-import { config } from "./config/config.mjs";
+import { config } from "../config/config.mjs";
 import dotenv from "dotenv";
 import { TwitterApi } from "twitter-api-v2";
-import { checkRateLimit, updateRateLimitInfo } from "./utils/helpers.mjs";
+import { checkRateLimit, updateRateLimitInfo, fetchLatestTokenData } from "../utils/helpers.mjs";
 import axios from 'axios';
-import { saveTweetData } from './db/dynamo.mjs';
-import { decryptPrivateKey } from './encryption/encryption.mjs';
-import { storeTradeInfo } from './db/dynamo.mjs';
-import { startPriceMonitoring } from './trading/pnl.mjs';
-import { executeTradeBuy } from './trading/buy.mjs';
+import { saveTweetData } from '../db/dynamo.mjs';
+import { executeTradeBuy } from '../trading/buy.mjs';
+import { checkSolanaBalance } from '../utils/solanaUtils.mjs';
+import { sendAnalysisMessage, sendTwitterUpdate } from '../utils/discord.mjs';
 
 dotenv.config();
 const url = 'https://api.smalltimedevs.com/ai/hive-engine'
@@ -16,52 +15,47 @@ export async function generateAutoPostTweet() {
     let tweetData;
     try {
       // Step 2 call the handleQuestion function
-      tweetData = await handleQuestion();
+      tweetData = await pickNewTokenNonBoosted();
       if (config.twitter.settings.devMode) {
         console.log('Development mode is enabled. Not posting to twitter. Generated tweet data:', tweetData);
       }
   
       while (!tweetData || !tweetData.tweet || !tweetData.comment) {
         console.log("Generated tweet is missing the tweet post or the comment post, retrying...");
-        tweetData = await handleQuestion();
+        await generateAutoPostTweet();
       }
       //console.log("Generated Tweet:", tweetData);
       return tweetData;
     } catch (error) {
       console.error("Error generating auto-post tweet, generating a new one!");
-      tweetData = await handleQuestion();
+      await generateAutoPostTweet();
     }
 }
 
-export async function handleQuestion() {
+async function pickNewTokenNonBoosted() {
     let tokenData;
     try {
-        tokenData = await fetchMeteoraTokenData();
-        if (config.twitter.settings.devMode) {
-            console.log('Development mode is enabled. Generated token data:', tokenData);
-        }
-
+      // Step 3
+        tokenData = await fetchLatestTokenData();
+        console.log('Token data:', tokenData);
     } catch (error) {
         console.error("Error fetching token data going to try again!", error);
-        await handleQuestion();
+        return await pickNewTokenNonBoosted();
     }
 
-    // Step 4 call the generatePrompt function
-    const prompt = await generatePrompt(tokenData);
-    //console.log("Generated prompt:", prompt);
+    // Step 4
+    const tokenAddress = tokenData.tokenAddress;
+    const chainId = tokenData.chainId;
 
+    // Make the const for the api specific request
+    const contractAddress = tokenAddress;
+    const chain = chainId;
     // If the response is good for the prompt then we can move on to the next step of calling the api with the response.
     let agentResponses;
     try {
-        // Step 5 call the external API with the prompt
-        if (config.twitter.settings.devMode) {
-        console.log("Sending request to external API with payload:", { query: prompt });
-        }
-
-        const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/twitter-agent-chat', { query: prompt });
-        //console.log("Received response from external API:", response.data);
+        const response = await axios.post('https://api.smalltimedevs.com/ai/hive-engine/twitter-agent-chat', {chain, contractAddress });
+        console.log("Received response from external API:", response.data);
         agentResponses = response.data.agents;
-
     } catch (error) {
         console.error("Error connecting to external API:", error.response ? error.response.data : error.message);
         throw new Error("Failed to connect to external API.");
@@ -127,32 +121,20 @@ export async function handleQuestion() {
     ${investmentAgent.response}\n
     ${investmentAgent.decision}`;
     
-    let agetnAnalysisComment = `${anaylstAgent.name}:\n${anaylstAgent.response}`;
+    let agentAnalysisComment = `${anaylstAgent.name}:\n${anaylstAgent.response}`;
     let agentTweetPost = `${tweetAgent.name}:\n${tweetAgent.response}`;
     let agentComment = `${commentAgent.name}:\n${commentAgent.response}`;
-    let agetnHashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
+    let agentHashtagsComment = `${hashtagsAgent.name}:\n${hashtagsAgent.response}\n`;
     let agentInvestmentComment = `${investmentAgent.name}:\n${investmentAgent.response}`;
     let agentInvestmentDecisionComment = `${investmentAgent.decision}`;
-
-    /*
-    if (tweet.length > 280) {
-        tweet = tweet.substring(0, 277) + '...';
-    }
-    if (comment.length > 280) {
-        comment = comment.substring(0, 277) + '...';
-    }
-    if (hashtagsComment.length > 280) {
-        hashtagsComment = hashtagsComment.substring(0, 277) + '...';
-    }
-    */
 
     const tweetData = {
         tweet,
         comment,
-        agetnAnalysisComment,
+        agentAnalysisComment,
         agentTweetPost,
         agentComment,
-        agetnHashtagsComment,
+        agentHashtagsComment,
         agentInvestmentComment,
         agentInvestmentDecisionComment,
         tokenData,
@@ -165,96 +147,13 @@ export async function handleQuestion() {
     return tweetData;
 }
 
-async function generatePrompt(tokenData) {
-  const {
-    dateCreated,
-    tokenName,
-    tokenSymbol,
-    tokenDescription,
-    tokenAddress,
-    tokenTwitterURL,
-    tokenWebsiteURL,
-    tokenPriceInSol,
-    tokenPriceInUSD,
-    tokenVolume24h,
-    tokenPriceChange5m,
-    tokenPriceChange1h,
-    tokenPriceChange6h,
-    tokenPriceChange24h,
-    tokenLiquidityUSD,
-    tokenLiquidityBase,
-    tokenLiquidityQuote,
-    tokenFDV,
-    tokenMarketCap,
-    tokenSafe,
-    tokenFreezeAuthority,
-    tokenMintAuthority,
-    meteoraSpecific,
-  } = tokenData;
-  const influencers = config.twitter.influencers.twitterHandles;
-  const randomInfluencer = influencers[Math.floor(Math.random() * influencers.length)];
-
-  return `
-    Token Information:
-    Date Created: ${dateCreated}
-    Token Name: ${tokenName}
-    Token Symbol: ${tokenSymbol}
-    Token Description: ${tokenDescription}
-    Token Address: ${tokenAddress}
-    Token Twitter URL: ${tokenTwitterURL}
-    Token Website URL: ${tokenWebsiteURL}
-
-    Price & Market Data:
-    Token Price In Sol: ${tokenPriceInSol}
-    Token Price In USD: ${tokenPriceInUSD}
-    Token Volume 24h: ${tokenVolume24h}
-    Token Price Change 5m: ${tokenPriceChange5m}
-    Token Price Change 1h: ${tokenPriceChange1h}
-    Token Price Change 6h: ${tokenPriceChange6h}
-    Token Price Change 24h: ${tokenPriceChange24h}
-    Token Liquidity USD: ${tokenLiquidityUSD}
-    Token Liquidity Base: ${tokenLiquidityBase}
-    Token Liquidity Quote: ${tokenLiquidityQuote}
-    Token FDV: ${tokenFDV}
-    Token Market Cap: ${tokenMarketCap}
-
-    Security Info:
-    Token Safe: ${tokenSafe}
-    Has Freeze Authority: ${tokenFreezeAuthority}
-    Has Mint Authority: ${tokenMintAuthority}
-
-    Meteora Pool Info:
-    Pool Address: ${meteoraSpecific?.pairAddress}
-    Bin Step: ${meteoraSpecific?.binStep}
-    Base Fee %: ${meteoraSpecific?.baseFeePercent}
-    Max Fee %: ${meteoraSpecific?.maxFeePercent}
-    Protocol Fee %: ${meteoraSpecific?.protocolFeePercent}
-    Fees 24h: ${meteoraSpecific?.fees24h}
-    Today's Fees: ${meteoraSpecific?.todayFees}
-    Pool APR: ${meteoraSpecific?.apr}
-    Pool APY: ${meteoraSpecific?.apy}
-    Farm APR: ${meteoraSpecific?.farmApr}
-    Farm APY: ${meteoraSpecific?.farmApy}
-
-    Twitter Influencer:
-    Random Influencer To Mention: ${randomInfluencer}
-  `
-}
-
 export async function postToTwitter(tweetData, client) {
   try {
-    console.log('Starting postToTwitter function with trade data:', {
-      investmentDecision: tweetData.agentInvestmentDecisionComment,
-      tokenDetails: {
-        name: tweetData.tokenData.tokenName,
-        address: tweetData.tokenData.tokenAddress,
-        priceSOL: tweetData.tokenData.tokenPriceInSol,
-        meteora: {
-          apr: tweetData.tokenData.meteoraSpecific?.apr,
-          apy: tweetData.tokenData.meteoraSpecific?.apy,
-          pairAddress: tweetData.tokenData.meteoraSpecific?.pairAddress
-        }
-      }
+    // Send tweet data to hive channel first
+    await sendAnalysisMessage('tweet', {
+      analysis: tweetData.agentAnalysisComment,
+      investment: tweetData.agentInvestmentComment,
+      decision: tweetData.agentInvestmentDecisionComment
     });
 
     let tradeResult = null;
@@ -264,44 +163,53 @@ export async function postToTwitter(tweetData, client) {
         (tweetData.agentInvestmentDecisionComment.startsWith("Invest") || 
          tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit"))) {
       
-      let targetGain, targetLoss;
-      let tradeType = null;
-
-      if (tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit")) {
-        const gainMatch = tweetData.agentInvestmentDecisionComment.match(/Gain \+(\d+)%/);
-        const lossMatch = tweetData.agentInvestmentDecisionComment.match(/Loss -(\d+)%/);
-        
-        targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
-        targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
-        tradeType = 'QUICK_PROFIT';
-      } else {
-        // Regular Invest format
-        const targetGainMatch = tweetData.agentInvestmentDecisionComment.match(/take profit at (\d+)%/i);
-        const targetLossMatch = tweetData.agentInvestmentDecisionComment.match(/stop loss at (\d+)%/i);
-        
-        targetGain = targetGainMatch ? parseFloat(targetGainMatch[1]) : 50;
-        targetLoss = targetLossMatch ? parseFloat(targetLossMatch[1]) : 20;
-        tradeType = 'INVEST';
-      }
-
-      console.log('Extracted trade parameters:', { targetGain, targetLoss });
+      // Check wallet balance before attempting trade
+      const currentBalance = await checkSolanaBalance(config.cryptoGlobals.publicKey);
+      const investmentAmount = config.cryptoGlobals.investmentAmountInSol;
+      const minThreshold = config.cryptoGlobals.walletThreshold;
       
-      // Execute trade and wait for result
-      tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss, tradeType);
-      
-      if (!tradeResult.success) {
-        console.error('Trade execution failed:', tradeResult.error);
+      if (currentBalance < minThreshold || (currentBalance - investmentAmount) < minThreshold) {
+        console.log('Insufficient balance for trade');
+        const donationComment = `I currently don't have enough funds to make this trade. If you want to see me keep purchasing through these trenches, feel free to donate to my trading funds:\nhttps://solscan.io/account/${config.cryptoGlobals.publicKey} 🙏`;
+        tweetData.comment = `${tweetData.comment}\n\n${donationComment}`;
       } else {
-        console.log('Trade executed successfully. Trade ID:', tradeResult.tradeId);
+        // Extract trade parameters and execute trade
+        let targetGain, targetLoss;
+        let tradeType = null;
 
-        if (tradeResult.txId) {
-          const tradeComment = `I put my money where my agent's mouth is! Check out the trade: https://solscan.io/tx/${tradeResult.txId} 🚀`;
-          tweetData.comment = `${tweetData.comment}\n${tradeComment}`;
+        if (tweetData.agentInvestmentDecisionComment.startsWith("Quick Profit")) {
+          const gainMatch = tweetData.agentInvestmentDecisionComment.match(/Gain \+(\d+)%/);
+          const lossMatch = tweetData.agentInvestmentDecisionComment.match(/Loss -(\d+)%/);
+          
+          targetGain = gainMatch ? parseFloat(gainMatch[1]) : 50;
+          targetLoss = lossMatch ? parseFloat(lossMatch[1]) : 20;
+          tradeType = 'QUICK_PROFIT';
+        } else {
+          // Regular Invest format
+          const targetGainMatch = tweetData.agentInvestmentDecisionComment.match(/take profit at (\d+)%/i);
+          const targetLossMatch = tweetData.agentInvestmentDecisionComment.match(/stop loss at (\d+)%/i);
+          
+          targetGain = targetGainMatch ? parseFloat(targetGainMatch[1]) : 50;
+          targetLoss = targetLossMatch ? parseFloat(targetLossMatch[1]) : 20;
+          tradeType = 'INVEST';
+        }
 
-          // Add Meteora pool info if available
-          if (tweetData.tokenData.meteoraSpecific) {
-            const poolInfo = `\nMeteora Pool Stats:\nAPR: ${tweetData.tokenData.meteoraSpecific.apr}%\nAPY: ${tweetData.tokenData.meteoraSpecific.apy}%`;
-            tweetData.comment = `${tweetData.comment}${poolInfo}`;
+        console.log('Extracted trade parameters:', { targetGain, targetLoss });
+        
+        tradeResult = await executeTradeBuy(tweetData, targetGain, targetLoss, tradeType);
+        
+        if (!tradeResult.success) {
+          if (tradeResult.error && tradeResult.error.includes('insufficient balance')) {
+            const donationComment = `I currently don't have enough funds to make this trade. If you want to see me keep purchasing through these trenches, feel free to donate to my trading funds:\nhttps://solscan.io/account/${config.cryptoGlobals.publicKey} 🙏`;
+            tweetData.comment = `${tweetData.comment}\n\n${donationComment}`;
+          } else {
+            console.error('Trade execution failed:', tradeResult.error);
+          }
+        } else {
+          console.log('Trade executed successfully. Trade ID:', tradeResult.tradeId);
+          if (tradeResult.txId) {
+            const tradeComment = `I put my money where my agent's mouth is! Check out the trade: https://solscan.io/tx/${tradeResult.txId} 🚀`;
+            tweetData.comment = `${tweetData.comment}\n${tradeComment}`;
           }
         }
       }
@@ -322,23 +230,20 @@ export async function postToTwitter(tweetData, client) {
       return;
     }
 
-    //const formattedTweet = tweetData.tweet.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-    //const { data: createdTweet, headers } = await client.v2.tweet(formattedTweet);
+    // Post main tweet and send to Discord
     const { data: createdTweet, headers } = await client.v2.tweet(tweetData.tweet);
     updateRateLimitInfo(headers);
+    await sendTwitterUpdate('tweet', tweetData.tweet);
     console.log('Tweet posted successfully:', createdTweet);
 
+    // Post reply and send to Discord
     if (tweetData.comment) {
-      //const formattedComment = tweetData.comment.replace(/\*\*/g, '').replace(/\\n/g, '\n').replace(/\s+/g, ' ').trim();
-      //const { headers: commentHeaders } = await client.v2.reply(formattedComment, createdTweet.id);
       const { headers: commentHeaders } = await client.v2.reply(tweetData.comment, createdTweet.id);
       updateRateLimitInfo(commentHeaders);
-      console.log('Comment posted successfully:', tweetData.comment);
+      await sendTwitterUpdate('reply', tweetData.comment);
+      console.log('Comment posted successfully');
     }
-       
-    // Formated Token Data
-    const formatedTokenData = JSON.stringify(tweetData.tokenData, null, 2);
-    // 
+
     // Save tweet data to DynamoDB
     if (
       tweetData.tweet && 
@@ -350,11 +255,11 @@ export async function postToTwitter(tweetData, client) {
         new Date().toISOString(),                     // date
         tweetData.tweet,                              // tweet
         tweetData.comment,                            // comment
-        tweetData.agetnHashtagsComment,               // hashtagsComment
-        tweetData.agetnAnalysisComment,               // analysisComment
+        tweetData.agentHashtagsComment,               // hashtagsComment
+        tweetData.agentAnalysisComment,               // analysisComment
         tweetData.agentTweetPost,                     // tweetPost
         tweetData.agentComment,                       // agentComment
-        tweetData.agetnHashtagsComment,               // hashtagsContent
+        tweetData.agentHashtagsComment,               // hashtagsContent
         tweetData.agentInvestmentComment,             // investmentComment
         tweetData.agentInvestmentDecisionComment,     // investmentDecision
         JSON.stringify(tweetData.tokenData, null, 2)  // tokenData
